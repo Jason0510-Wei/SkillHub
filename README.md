@@ -7,11 +7,31 @@
 
 | Skill | 功能 | 用法 |
 |-------|------|------|
-| 🧠 **whitepaper** | 白皮书 / 行业报告解读 → 多平台选题 | 丢 PDF 进 `输入/`，说"解读 xxx.pdf" |
-| 🔥 **hotspot** | 抓今日全网热点 + 按赛道打分 + 出多平台改写方案 | 说"今天有什么热点" |
+| 🧠 **whitepaper** | 白皮书 / 行业报告解读 → 多平台选题 + 自动配图 | 丢 PDF 进 `输入/`，说"解读 xxx.pdf" |
+| 🔥 **hotspot** | 抓今日全网热点 + 按赛道打分 + 自动出封面图 | 说"今天有什么热点" |
 | 📊 **review** | 导入平台数据 CSV/XLSX → 周报 + 下周建议 | 说"复盘 xxx.xlsx" |
+| 🎨 **xhs-poster** | 小红书 6 图套图生成器（文案 + AI 配图） | 说"做一套小红书图文" |
 
 三个 Skill 共享一份**账号画像**配置，改一次全部生效。
+
+## 🎁 可选增强：接入图片生成 MCP
+
+装好后，whitepaper / hotspot / xhs-poster 三个 Skill 会**自动生图**，不再只给你 prompt。
+
+### 推荐方案：Nano Banana（Gemini 2.5 Flash Image）
+
+1. 去 https://aistudio.google.com/apikey 申请免费 Gemini API key
+2. 在终端执行：
+
+```bash
+claude mcp add nano-banana --scope user \
+  --env GEMINI_API_KEY=你的KEY \
+  -- npx -y @willh/nano-banana-mcp
+```
+
+3. 重启 Claude Code，MCP 就会自动加载
+
+不装也能用，Skill 会降级为"给你 prompt 让你自己去画图工具生成"。
 
 ## 🚀 快速开始
 
