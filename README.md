@@ -1,7 +1,7 @@
 # 自媒体 AI 工具箱 🎬
 
-> 用 Claude Code 帮自媒体博主做**白皮书解读、热点抓取、数据复盘**三件事。
-> 零代码基础即可使用，对话就能出选题、出周报。
+> 用 Claude Code 帮自媒体博主做**白皮书解读、热点抓取、数据复盘、小红书套图、AI 生图**。
+> 零代码基础即可使用，对话就能出选题、出周报、出配图。
 
 ## ✨ 能做什么
 
@@ -11,14 +11,15 @@
 | 🔥 **hotspot** | 抓今日全网热点 + 按赛道打分 + 自动出封面图 | 说"今天有什么热点" |
 | 📊 **review** | 导入平台数据 CSV/XLSX → 周报 + 下周建议 | 说"复盘 xxx.xlsx" |
 | 🎨 **xhs-poster** | 小红书 6 图套图生成器（文案 + AI 配图） | 说"做一套小红书图文" |
+| 🖼️ **hy-image-generation** | 腾讯云混元生图 3.0，文生图 / 图生图 | 说"用混元画一只猫" |
 
-三个 Skill 共享一份**账号画像**配置，改一次全部生效。
+前四个 Skill 共享一份**账号画像**配置，改一次全部生效。
 
-## 🎁 可选增强：接入图片生成 MCP
+## 🎁 可选增强：接入图片生成
+
+### 方案 A：Nano Banana MCP（Gemini 2.5 Flash Image，推荐）
 
 装好后，whitepaper / hotspot / xhs-poster 三个 Skill 会**自动生图**，不再只给你 prompt。
-
-### 推荐方案：Nano Banana（Gemini 2.5 Flash Image）
 
 1. 去 https://aistudio.google.com/apikey 申请免费 Gemini API key
 2. 在终端执行：
@@ -32,6 +33,26 @@ claude mcp add nano-banana --scope user \
 3. 重启 Claude Code，MCP 就会自动加载
 
 不装也能用，Skill 会降级为"给你 prompt 让你自己去画图工具生成"。
+
+### 方案 B：腾讯云混元生图 3.0（hy-image-generation Skill）
+
+内置 Skill，无需额外安装 MCP。基于腾讯混元大模型，支持垫图引导和 Prompt 智能改写。
+
+1. 开通 [腾讯云智能图像创作](https://console.cloud.tencent.com/aiart)
+2. 获取 [API 密钥](https://console.cloud.tencent.com/cam/capi)
+3. 设置环境变量（或让 Claude 帮你配置）：
+
+```bash
+# Linux / macOS
+export TENCENTCLOUD_SECRET_ID="你的SecretId"
+export TENCENTCLOUD_SECRET_KEY="你的SecretKey"
+
+# Windows PowerShell
+$env:TENCENTCLOUD_SECRET_ID = "你的SecretId"
+$env:TENCENTCLOUD_SECRET_KEY = "你的SecretKey"
+```
+
+然后直接说"用混元画一只猫"或"生成图片：xxx"即可。
 
 ## 🚀 快速开始
 
@@ -73,15 +94,19 @@ claude
 - `今天有什么热点？` → 触发 hotspot
 - `解读 输入/xxx.pdf` → 触发 whitepaper
 - `复盘 输入/xxx.xlsx` → 触发 review
+- `做一套小红书图文` → 触发 xhs-poster
+- `用混元画一只猫` → 触发 hy-image-generation
 
 ## 📁 目录结构
 
 ```
 self-media-toolkit/
-├── .claude/skills/          # 三个 AI Skill（不用管）
-│   ├── whitepaper/
-│   ├── hotspot/
-│   └── review/
+├── .claude/skills/          # AI Skill（不用管）
+│   ├── whitepaper/          # 白皮书解读
+│   ├── hotspot/             # 热点抓取
+│   ├── review/              # 数据复盘
+│   ├── xhs-poster/          # 小红书套图
+│   └── hy-image-generation/ # 腾讯云混元生图
 ├── 配置/
 │   └── 账号画像.md          # ⭐ 先填这个
 ├── 输入/                    # 放 PDF、数据表（本地，不上传）
@@ -132,6 +157,16 @@ git pull
 给我出 3 条本周能拍的短视频脚本。
 ```
 
+### AI 生图
+
+```
+用混元画一张：夕阳下的咖啡馆，温馨治愈风格
+```
+
+```
+用混元生成一张竖版封面图，主题是"2026 AI 副业指南"
+```
+
 ## ❓ FAQ
 
 **Q: 需要 Claude API key 吗？**
@@ -144,7 +179,7 @@ A: AI 出的选题要匹配你的赛道、人设、禁区，否则给的是通�
 A: 确认启动 Claude Code 的目录就是仓库根目录（能看到 `.claude/` 文件夹）。
 
 **Q: 想加新的 Skill？**
-A: 在 `.claude/skills/` 下新建文件夹，写个 `SKILL.md` 即可，参考现有三个。
+A: 在 `.claude/skills/` 下新建文件夹，写个 `SKILL.md` 即可，参考现有的 Skill。
 
 ## 📄 License
 
