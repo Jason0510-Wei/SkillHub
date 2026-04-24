@@ -28,3 +28,6 @@ desktop.ini
 *.tmp
 *.log
 ~$*
+
+# 压缩包（Skill 源码包，解压后可删除）
+*.zip
