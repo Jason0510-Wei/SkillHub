@@ -1,9 +1,9 @@
 ---
 name: tiktok-image-to-wallpaper
 description: >-
-  把 TikTok 的图片变成手机壁纸 JPEG。两种入口：① 用户直接丢来 TikTok 链接 —— 先用 gallery-dl 下载链接里的图片，再逐个转成手机壁纸 JPEG；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 直接转。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、把这条抖音/国际版抖音链接的图下载下来。解码依赖本机 ffmpeg 的 vvc 解码器；下载依赖 gallery-dl（首选，自动解 TikTok JS 挑战、支持 /photo/ 图文帖）/ yt-dlp（兜底）。
+  把 TikTok 的图片变成手机壁纸 JPEG。两种入口：① 用户直接丢来 TikTok 链接 —— 先用 gallery-dl 下载链接里的图片，再逐个转成手机壁纸 JPEG；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 直接转。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、把这条抖音/国际版抖音链接的图下载下来。解码依赖本机 ffmpeg 的 vvc 解码器；下载依赖 gallery-dl（首选，自动解 TikTok JS 挑战、支持 /photo/ 图文帖）/ yt-dlp（兜底）。下载结果按 壁纸/<博主>/<时间戳YYYYMMDDHHMM>/ 目录归档。
 agent_created: true
-version: 1.2.0
+version: 1.3.0
 display_name: "TikTok图片转手机壁纸"
 display_name_en: "TikTok Image to Phone Wallpaper"
 description_zh: "从 TikTok 链接下载图片或读取本地 .image，转换为手机壁纸 JPEG。"
@@ -19,7 +19,7 @@ visibility: "user"
 
 TikTok 保存的 `*.image` 文件其实是 **VVC（H.266）编码的 HEIF 容器**（brand `vvic`，编码项 `vvc1`），
 几乎没有任何看图软件内置 VVC 解码器，所以会“打不开”。本 skill 用 ffmpeg 的 `vvc` 解码器把它还原成普通 JPEG；
-如果用户给的是 TikTok **链接**，则先用 yt-dlp 把帖子里的图片下载下来，再转。
+如果用户给的是 TikTok **链接**，则先用 gallery-dl 把帖子里的图片下载下来，再转。
 
 ## 前置条件
 
@@ -33,24 +33,30 @@ TikTok 保存的 `*.image` 文件其实是 **VVC（H.266）编码的 HEIF 容器
 
 ### 入口 A：用户给了 TikTok 链接（最常见）
 
-1. 下载图片到临时目录：
-   ```bash
-   python3 "<skill_dir>/scripts/download_tiktok.py" "<tiktok_url>" "tiktok_tmp"
+**一条命令搞定**，自动按「博主 / 下载时间」分层归档：
+
+```bash
+python3 "<skill_dir>/scripts/download_tiktok.py" "<tiktok_url>"
+```
+
+脚本内部完成：
+1. 用 gallery-dl（兜底 yt-dlp）下载链接里的图片/视频；
+2. 自动识别博主——优先从链接里的 `@username` 取，取不到就从 gallery-dl 的下载目录（`tiktok/<user>/`）反推 TikTok handle；
+3. 按**保存时间**在「壁纸」目录下建文件夹，落盘结构：
+
    ```
-   脚本用 gallery-dl 把帖子里的图片下载进 `tiktok_tmp/`（可能得到 `.image` 或 `.jpg/.webp` 等；gallery-dl 会下到 `tiktok/<user>/...` 子目录，脚本自动归并到根目录并丢弃音频）。
-
-2. 逐个转成手机壁纸（输出到 `wallpapers/`）：
-   ```bash
-   mkdir -p wallpapers
-   for f in tiktok_tmp/*; do
-     python3 "<skill_dir>/scripts/convert_tiktok_image.py" "$f" "wallpapers/$(basename "$f" | sed 's/\.[^.]*$//')_wallpaper.jpg"
-   done
+   当前目录/壁纸/<博主>/<时间戳YYYYMMDDHHMM>/
+   例：壁纸/xqteth/202611021238/
    ```
-   `convert_tiktok_image.py` **自动识别格式**：`.image`(VVC) 走 vvc 解码，普通图片直接 ffmpeg 转码；输出统一为宽度 ≤1080 的 JPEG（`-q:v 3` 高画质）。
+   （每个博主一个文件夹，每个链接一个时间文件夹）
+4. 把每个文件转成手机壁纸 JPEG（宽度 ≤1080，`-q:v 3`），成功后再删除原始下载件，文件夹里只留 `<原名>_wallpaper.jpg`。
 
-3. 用 `present_files` 把 `wallpapers/` 里的 JPG 展示给用户。
+- 想自定义根目录（不用默认「壁纸」）：第 2 个参数传路径，如 `"D:/壁纸"`。
+- 只想下载、不转壁纸（保留原始文件）：末尾加 `--no-convert`。
 
-> 若下载下来的是视频（slideshow 被当成视频），convert 会取首帧转成一张壁纸；这种情况提示用户“该链接是视频，已取首帧”。
+2. 用 `present_files` 把 `壁纸/<博主>/<时间戳>/` 里的 JPG 展示给用户。
+
+> 若帖子是视频（slideshow 被当成视频），convert 会取首帧转成一张壁纸；这种情况提示用户“该链接是视频，已取首帧”。
 
 ### 入口 B：用户给了本地 `.image` 文件
 
