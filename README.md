@@ -12,7 +12,7 @@
 | 📊 **review** | 导入平台数据 CSV/XLSX → 周报 + 下周建议 | 说"复盘 xxx.xlsx" |
 | 🎨 **xhs-poster** | 小红书 6 图套图生成器（文案 + AI 配图） | 说"做一套小红书图文" |
 | 🖼️ **hy-image-generation** | 腾讯云混元生图 3.0，文生图 / 图生图 | 说"用混元画一只猫" |
-| 📱 **tiktok-image-to-wallpaper** | TikTok `.image`（VVC/HEIF 私有格式）→ 手机壁纸 JPEG | 丢 `.image` 文件，说"转成手机壁纸" |
+| 📱 **tiktok-image-to-wallpaper** | TikTok `.image`（VVC/HEIF 私有格式）→ 手机壁纸 JPEG；也支持**直接丢 TikTok 链接**，自动下载图片再转 | 丢 `.image` 或 TikTok 链接，说"转成手机壁纸" |
 
 前四个 Skill 共享一份**账号画像**配置，改一次全部生效。
 

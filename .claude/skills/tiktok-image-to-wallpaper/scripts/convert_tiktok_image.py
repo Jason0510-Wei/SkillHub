@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TikTok .image (VVC/H.266 编码的 HEIF 私有格式) -> 手机壁纸 JPEG 转换器。
+TikTok 图片 -> 手机壁纸 JPEG 转换器（格式通吃版）。
 
-原理：
+支持两类输入：
+  A. TikTok 的 *.image 私有格式（VVC/H.266 编码的 HEIF）：从 HEIF 抽出 VVC 码流，
+     用本机 ffmpeg 的 `vvc` 解码器解码，再缩放输出 JPEG。
+  B. 普通图片（jpg/png/webp/heic/avif/gif/bmp 等）：直接交给 ffmpeg 转码 + 缩放成 JPEG。
+
+原理（仅 A 类需要）：
   TikTok 保存的 *.image 文件其实是 HEIF 容器，编码项为 vvc1（VVC / H.266），
   普通看图软件没有 VVC 解码器，所以全部“打不开”。本脚本：
     1. 从 HEIF 里解析出 vvcC 配置盒，取出 VPS/SPS/PPS 等参数集 NAL；
@@ -16,7 +21,7 @@ TikTok .image (VVC/H.266 编码的 HEIF 私有格式) -> 手机壁纸 JPEG 转�
   - 检查：ffmpeg -hide_banner -decoders 2>/dev/null | grep -i " vvc "
 
 用法：
-  python3 convert_tiktok_image.py <input.image> [output.jpg]
+  python3 convert_tiktok_image.py <input.file> [output.jpg]
   output 省略时，输出到 input 同目录：<stem>_wallpaper.jpg
 """
 import sys
@@ -91,35 +96,30 @@ def parse_mdat_nals(mdat):
     return []
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("usage: convert_tiktok_image.py <input.image> [output.jpg]")
-        sys.exit(2)
+def is_vvc_heif(d):
+    if len(d) < 12 or d[4:8] != b'ftyp':
+        return False
+    # brand vvic 或配置盒 vvcC 均可判定为 TikTok VVC/HEIF
+    return (b'vvcC' in d[:8192]) or (b'vvic' in d[8:24])
 
-    inp = sys.argv[1]
+
+def decode_vvc(inp, out):
     with open(inp, 'rb') as f:
         d = f.read()
-
     boxes = box_walk(d, 0, len(d))
-
     vvcC = boxes.get('vvcC', [(None, None)])[0]
     if vvcC[0] is None:
-        print("ERROR: 未找到 vvcC 配置盒 —— 这可能不是 TikTok 的 VVC/HEIF .image 文件")
-        sys.exit(3)
+        return False, "未找到 vvcC 配置盒（可能不是 TikTok VVC/HEIF）"
     vvcC_off, vvcC_size = vvcC
     cfg_nals = parse_vvcC_nals(d[vvcC_off + 8:vvcC_off + vvcC_size])
-
     mdat = boxes.get('mdat', [(None, None)])[0]
     if mdat[0] is None:
-        print("ERROR: 未找到 mdat 数据盒")
-        sys.exit(3)
+        return False, "未找到 mdat 数据盒"
     mdat_off, mdat_size = mdat
     pic_nals = parse_mdat_nals(d[mdat_off + 8:mdat_off + mdat_size])
     if not pic_nals:
-        print("ERROR: mdat 中没有解析出编码图像 NAL")
-        sys.exit(3)
+        return False, "mdat 中未解析出编码图像 NAL"
 
-    # 重组成 Annex B 裸流：参数集在前，图像 NAL 在后
     annex = b''
     for nal in cfg_nals:
         annex += b'\x00\x00\x00\x01' + nal
@@ -129,23 +129,61 @@ def main():
     tmp = tempfile.NamedTemporaryFile(suffix='.vvc', delete=False)
     tmp.write(annex)
     tmp.close()
-
-    out = (sys.argv[2] if len(sys.argv) > 2
-           else os.path.splitext(inp)[0] + '_wallpaper.jpg')
-
-    # 缩放至手机尺寸：宽度不超过 1080（9:16 壁纸），保持比例；JPEG 质量 q:v 3（高）
     vf = "scale=min(1080\\,iw):-1"
     cmd = ['ffmpeg', '-y', '-f', 'vvc', '-i', tmp.name,
            '-vf', vf, '-q:v', '3', '-frames:v', '1', '-update', '1', out]
     r = subprocess.run(cmd, capture_output=True, text=True)
     os.unlink(tmp.name)
-
     if r.returncode != 0 or not os.path.exists(out):
-        print("ERROR: ffmpeg 解码失败（可能本机 ffmpeg 没有 vvc 解码器）")
-        print(r.stderr[-2000:])
+        return False, "ffmpeg vvc 解码失败（本机 ffmpeg 可能缺 vvc 解码器）\n" + (r.stderr or '')[-1500:]
+    return True, None
+
+
+def transcode_generic(inp, out):
+    vf = "scale=min(1080\\,iw):-1"
+    cmd = ['ffmpeg', '-y', '-i', inp, '-vf', vf,
+           '-q:v', '3', '-frames:v', '1', '-update', '1', out]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.exists(out):
+        return False, "ffmpeg 转码失败\n" + (r.stderr or '')[-1500:]
+    return True, None
+
+
+def coerce_jpg(path):
+    if not path.lower().endswith(('.jpg', '.jpeg')):
+        path = os.path.splitext(path)[0] + '.jpg'
+    return path
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: convert_tiktok_image.py <input.file> [output.jpg]")
+        sys.exit(2)
+
+    inp = sys.argv[1]
+    if not os.path.exists(inp):
+        print("ERROR: 输入文件不存在:", inp)
+        sys.exit(2)
+
+    out = (sys.argv[2] if len(sys.argv) > 2
+           else os.path.splitext(inp)[0] + '_wallpaper.jpg')
+    out = coerce_jpg(out)
+
+    with open(inp, 'rb') as f:
+        head = f.read(8192)
+
+    if is_vvc_heif(head):
+        ok, err = decode_vvc(inp, out)
+        tag = "VVC"
+    else:
+        ok, err = transcode_generic(inp, out)
+        tag = "通用"
+
+    if not ok:
+        print("ERROR: [" + tag + "] " + (err or "未知错误"))
         sys.exit(4)
 
-    print("OK " + out + "  (" + str(os.path.getsize(out)) + " bytes)")
+    print("OK [" + tag + "] " + out + "  (" + str(os.path.getsize(out)) + " bytes)")
 
 
 if __name__ == '__main__':
