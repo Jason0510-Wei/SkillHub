@@ -3,7 +3,7 @@ name: tiktok-image-to-wallpaper
 description: >-
   把 TikTok 的图片变成手机壁纸 JPEG。两种入口：① 用户直接丢来 TikTok 链接 —— 先用 gallery-dl 下载链接里的图片，再逐个转成手机壁纸 JPEG；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 直接转。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、把这条抖音/国际版抖音链接的图下载下来。解码依赖本机 ffmpeg 的 vvc 解码器；下载依赖 gallery-dl（首选，自动解 TikTok JS 挑战、支持 /photo/ 图文帖）/ yt-dlp（兜底）。下载结果按 壁纸/<博主>/<时间戳YYYYMMDDHHMM>/ 目录归档。
 agent_created: true
-version: 1.3.0
+version: 1.4.0
 display_name: "TikTok图片转手机壁纸"
 display_name_en: "TikTok Image to Phone Wallpaper"
 description_zh: "从 TikTok 链接下载图片或读取本地 .image，转换为手机壁纸 JPEG。"
@@ -49,10 +49,11 @@ python3 "<skill_dir>/scripts/download_tiktok.py" "<tiktok_url>"
    例：壁纸/xqteth/202611021238/
    ```
    （每个博主一个文件夹，每个链接一个时间文件夹）
-4. 把每个文件转成手机壁纸 JPEG（宽度 ≤1080，`-q:v 3`），成功后再删除原始下载件，文件夹里只留 `<原名>_wallpaper.jpg`。
+4. 把每个文件转成手机壁纸 JPEG（**默认宽度 ≤1080**；加 `--4k` 则长边升采样到 3840），成功后再删除原始下载件，文件夹里只留 `<原名>_wallpaper.jpg`。**转换结束会打印每张的实际分辨率**（如 `1080x1920`），方便核对到底几 K。
 
 - 想自定义根目录（不用默认「壁纸」）：第 2 个参数传路径，如 `"D:/壁纸"`。
 - 只想下载、不转壁纸（保留原始文件）：末尾加 `--no-convert`。
+- 想要 4K 尺寸输出：末尾加 `--4k`（长边升采样到 3840）。**注意**：源本就 <4K（TikTok 图文帖源通常只有 942–1080px 宽），`--4k` 是**插值放大**，仅尺寸到 4K、细节不会凭空增加；若需要真·4K 细节，需接 AI 超分（Real-ESRGAN 等），属后续增强。
 
 2. 用 `present_files` 把 `壁纸/<博主>/<时间戳>/` 里的 JPG 展示给用户。
 

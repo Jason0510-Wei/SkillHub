@@ -21,8 +21,10 @@ TikTok 图片 -> 手机壁纸 JPEG 转换器（格式通吃版）。
   - 检查：ffmpeg -hide_banner -decoders 2>/dev/null | grep -i " vvc "
 
 用法：
-  python3 convert_tiktok_image.py <input.file> [output.jpg]
+  python3 convert_tiktok_image.py <input.file> [output.jpg] [--4k]
   output 省略时，输出到 input 同目录：<stem>_wallpaper.jpg
+  --4k：把长边升采样到 3840（4K 尺寸）。源若本就 <4K 则为插值放大，
+        仅尺寸到 4K，不会凭空增加细节；真·4K 需 AI 超分（Real-ESRGAN 等）。
 """
 import sys
 import os
@@ -103,7 +105,7 @@ def is_vvc_heif(d):
     return (b'vvcC' in d[:8192]) or (b'vvic' in d[8:24])
 
 
-def decode_vvc(inp, out):
+def decode_vvc(inp, out, vf):
     with open(inp, 'rb') as f:
         d = f.read()
     boxes = box_walk(d, 0, len(d))
@@ -129,7 +131,6 @@ def decode_vvc(inp, out):
     tmp = tempfile.NamedTemporaryFile(suffix='.vvc', delete=False)
     tmp.write(annex)
     tmp.close()
-    vf = "scale=min(1080\\,iw):-1"
     cmd = ['ffmpeg', '-y', '-f', 'vvc', '-i', tmp.name,
            '-vf', vf, '-q:v', '3', '-frames:v', '1', '-update', '1', out]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -139,8 +140,7 @@ def decode_vvc(inp, out):
     return True, None
 
 
-def transcode_generic(inp, out):
-    vf = "scale=min(1080\\,iw):-1"
+def transcode_generic(inp, out, vf):
     cmd = ['ffmpeg', '-y', '-i', inp, '-vf', vf,
            '-q:v', '3', '-frames:v', '1', '-update', '1', out]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -155,35 +155,65 @@ def coerce_jpg(path):
     return path
 
 
+def build_vf(fourk):
+    if fourk:
+        # 4K 模式：把长边升采样到 3840（保持比例、取偶数），lanczos 抗锯齿。
+        # 注意：源若本就 <4K，这是“插值放大”，尺寸到 4K 但细节不增。
+        return "scale='if(gt(iw,ih),3840,-2)':'if(gt(ih,iw),3840,-2)':flags=lanczos"
+    # 默认：宽度封顶 1080，绝不放大超过 1080（保持原比例）。
+    return "scale=min(1080\\,iw):-1"
+
+
+def probe_dims(path):
+    try:
+        r = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                            '-show_entries', 'stream=width,height',
+                            '-of', 'csv=p=0', path],
+                           capture_output=True, text=True)
+        w, h = r.stdout.strip().split(',')
+        return int(w), int(h)
+    except Exception:
+        return None, None
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("usage: convert_tiktok_image.py <input.file> [output.jpg]")
+    args = sys.argv[1:]
+    fourk = '--4k' in args
+    if fourk:
+        args.remove('--4k')
+    if len(args) < 1:
+        print("usage: convert_tiktok_image.py <input.file> [output.jpg] [--4k]")
         sys.exit(2)
 
-    inp = sys.argv[1]
+    inp = args[0]
     if not os.path.exists(inp):
         print("ERROR: 输入文件不存在:", inp)
         sys.exit(2)
 
-    out = (sys.argv[2] if len(sys.argv) > 2
+    out = (args[1] if len(args) > 1
            else os.path.splitext(inp)[0] + '_wallpaper.jpg')
     out = coerce_jpg(out)
+
+    vf = build_vf(fourk)
 
     with open(inp, 'rb') as f:
         head = f.read(8192)
 
     if is_vvc_heif(head):
-        ok, err = decode_vvc(inp, out)
+        ok, err = decode_vvc(inp, out, vf)
         tag = "VVC"
     else:
-        ok, err = transcode_generic(inp, out)
+        ok, err = transcode_generic(inp, out, vf)
         tag = "通用"
 
     if not ok:
         print("ERROR: [" + tag + "] " + (err or "未知错误"))
         sys.exit(4)
 
-    print("OK [" + tag + "] " + out + "  (" + str(os.path.getsize(out)) + " bytes)")
+    w, h = probe_dims(out)
+    dim = (f"{w}x{h} " if w else "")
+    mode = "[4K]" if fourk else ""
+    print(f"OK [{tag}] {out}  {dim}({os.path.getsize(out)} bytes) {mode}")
 
 
 if __name__ == '__main__':
