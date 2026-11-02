@@ -1,9 +1,9 @@
 ---
 name: tiktok-image-to-wallpaper
 description: >-
-  把 TikTok 的图片变成手机壁纸 JPEG。两种入口：① 用户直接丢来 TikTok 链接 —— 先用 yt-dlp 下载链接里的图片，再逐个转成手机壁纸 JPEG；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 直接转。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、把这条抖音/国际版抖音链接的图下载下来。解码依赖本机 ffmpeg 的 vvc 解码器，下载依赖 yt-dlp。
+  把 TikTok 的图片变成手机壁纸 JPEG。两种入口：① 用户直接丢来 TikTok 链接 —— 先用 gallery-dl 下载链接里的图片，再逐个转成手机壁纸 JPEG；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 直接转。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、把这条抖音/国际版抖音链接的图下载下来。解码依赖本机 ffmpeg 的 vvc 解码器；下载依赖 gallery-dl（首选，自动解 TikTok JS 挑战、支持 /photo/ 图文帖）/ yt-dlp（兜底）。
 agent_created: true
-version: 1.1.0
+version: 1.2.0
 display_name: "TikTok图片转手机壁纸"
 display_name_en: "TikTok Image to Phone Wallpaper"
 description_zh: "从 TikTok 链接下载图片或读取本地 .image，转换为手机壁纸 JPEG。"
@@ -13,7 +13,7 @@ visibility: "user"
 
 # TikTok 图片 → 手机壁纸 JPEG
 
-> ⚠️ **前置依赖**：这套流程依赖本机 ffmpeg 带 `vvc` 解码器（你这台已具备）；换机器先跑 `ffmpeg -decoders | grep vvc` 自检，没有就换带 VVC 解码的 ffmpeg 版本。下载环节还需要 **yt-dlp**（`pip install yt-dlp`）。
+> ⚠️ **前置依赖**：这套流程依赖本机 ffmpeg 带 `vvc` 解码器（你这台已具备）；换机器先跑 `ffmpeg -decoders | grep vvc` 自检，没有就换带 VVC 解码的 ffmpeg 版本。下载环节还需要 **gallery-dl**（`pip install gallery-dl`，脚本首次运行自动装；它内置 TikTok 提取器、会自动解 TikTok 的 JS 反爬挑战，且支持 `/photo/` 图文/幻灯片帖）。yt-dlp 仅作为 gallery-dl 失败时的兜底。
 
 ## 这是什么
 
@@ -27,7 +27,7 @@ TikTok 保存的 `*.image` 文件其实是 **VVC（H.266）编码的 HEIF 容器
   ```bash
   ffmpeg -hide_banner -decoders 2>/dev/null | grep -i " vvc "
   ```
-- **yt-dlp**（下载用）：`pip install yt-dlp`，或让脚本首次运行时自动装。
+- **gallery-dl**（下载用，首选）：`pip install gallery-dl`，或让脚本首次运行时自动装。它内置 TikTok 提取器，支持图文/幻灯片帖子（`/photo/`）并能自动过 JS 挑战，通常无需登录 Cookie。
 
 ## 使用流程
 
@@ -37,7 +37,7 @@ TikTok 保存的 `*.image` 文件其实是 **VVC（H.266）编码的 HEIF 容器
    ```bash
    python3 "<skill_dir>/scripts/download_tiktok.py" "<tiktok_url>" "tiktok_tmp"
    ```
-   脚本用 yt-dlp 把帖子里的图片下载进 `tiktok_tmp/`（可能得到 `.image` 或 `.jpg/.webp` 等）。
+   脚本用 gallery-dl 把帖子里的图片下载进 `tiktok_tmp/`（可能得到 `.image` 或 `.jpg/.webp` 等；gallery-dl 会下到 `tiktok/<user>/...` 子目录，脚本自动归并到根目录并丢弃音频）。
 
 2. 逐个转成手机壁纸（输出到 `wallpapers/`）：
    ```bash
@@ -63,7 +63,7 @@ python3 "<skill_dir>/scripts/convert_tiktok_image.py" "C:/path/to/xxx.image"
 ## 依赖自检 / 异常处理
 
 - ffmpeg 列表里没有 `vvc` → 提示更换带 VVC 解码的 ffmpeg，给出自检命令。
-- `download_tiktok.py` 下载 0 文件 → 把 yt-dlp 的报错贴回给用户诊断（常见原因：TikTok 反爬需登录 Cookie / 代理 / 链接失效）。脚本已自动尝试 `pip install yt-dlp`。
+- `download_tiktok.py` 下载 0 文件 → 把 gallery-dl/yt-dlp 的报错贴回诊断（常见原因：TikTok 反爬需登录 Cookie / 代理 / 链接失效）。脚本已自动尝试 `pip install gallery-dl`。若仍失败，可手动加 Cookie：`python3 -m gallery_dl -d out --cookies-from-browser chrome <url>`。
 - 解码花屏/异常 → 该文件可能用了不同封装变体，可回退手动解析 iloc 定位数据（见 `convert_tiktok_image.py` 注释）。
 
 ## 给用户的简短说明
