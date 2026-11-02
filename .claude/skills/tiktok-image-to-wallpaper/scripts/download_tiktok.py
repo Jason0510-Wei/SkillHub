@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-从 TikTok 链接下载图片/视频到指定目录，供后续转壁纸使用。
+从 TikTok 链接下载图片/视频，并直接转成手机壁纸 JPEG，按下面的目录结构落盘：
+
+    <base_dir>/<博主>/<时间戳YYYYMMDDHHMM>/
+
+其中：
+  - <base_dir> 默认是执行目录下的「壁纸」文件夹（可用第 2 个参数覆盖）；
+  - <博主>    自动从链接识别 TikTok handle（@username），识别不到时退化为 "tiktok"；
+  - <时间戳>  本条链接保存时的本地时间，格式 YYYYMMDDHHMM（如 202611021238）。
+
+每个链接一个时间文件夹、每个博主一个文件夹，方便按人归档。
 
 下载器优先级：
   1. gallery-dl（首选）：TikTok 提取器成熟，能处理「图文/幻灯片」帖子（/photo/ 路径），
@@ -10,22 +19,24 @@
      Unsupported URL，因此只作为 gallery-dl 失败时的备胎。
 
 依赖：gallery-dl（pip install gallery-dl）。若未安装会自动尝试 pip 安装。
-注意：TikTok 反爬较严，个别链接/地区可能仍需登录 Cookie 或代理；失败时把报错贴回诊断。
 本机若走代理，gallery-dl/requests 会自动读取 HTTP_PROXY/HTTPS_PROXY 环境变量。
 
 用法：
-  python3 download_tiktok.py <tiktok_url> [outdir]
-默认 outdir = 当前目录下的 tiktok_download/
+  python3 download_tiktok.py <tiktok_url> [base_dir] [--no-convert]
+默认 base_dir = 当前目录下的「壁纸」；--no-convert 只下载不转壁纸（保留原始文件）。
 """
 import sys
 import os
+import re
 import shutil
 import subprocess
+import tempfile
+import datetime
 
-# 视为“媒体文件”的扩展名；convert 脚本会逐个处理这些
+# 视为“媒体文件”的扩展名
 MEDIA_EXT = ('.jpg', '.jpeg', '.png', '.webp', '.image', '.heic',
              '.avif', '.gif', '.bmp', '.mp4', '.mov', '.webm', '.mkv')
-# 壁纸转换只关心图片和视频，纯音频直接排除
+# 纯音频直接排除（壁纸不关心）
 SKIP_EXT = ('.mp3', '.m4a', '.wav', '.aac', '.ogg')
 
 
@@ -75,72 +86,125 @@ def run_ytdlp(url, outdir):
     return True
 
 
-def flatten(outdir):
-    """gallery-dl 会把文件下到 tiktok/<user>/... 嵌套目录，并可能附带音频。
-    这里把媒体文件提到 outdir 根、删掉纯音频、清理空目录，方便下一步 convert 直接遍历。"""
-    moved = 0
-    for root, dirs, files in os.walk(outdir):
-        if root == outdir:
-            continue
+def blogger_from_url(url):
+    m = re.search(r'@([A-Za-z0-9_.]+)', url)
+    return m.group(1) if m else None
+
+
+def blogger_from_tree(workdir):
+    """gallery-dl 下载结构为 <workdir>/tiktok/<user>/...，从中取出 <user>。"""
+    for root, dirs, files in os.walk(workdir):
+        parts = root.split(os.sep)
+        if 'tiktok' in parts:
+            i = parts.index('tiktok')
+            if i + 1 < len(parts):
+                return parts[i + 1]
+    return None
+
+
+def collect_media(workdir):
+    out = []
+    for root, dirs, files in os.walk(workdir):
         for f in files:
             ext = os.path.splitext(f)[1].lower()
-            src = os.path.join(root, f)
-            if ext in SKIP_EXT:
-                try:
-                    os.remove(src)
-                except OSError:
-                    pass
-                continue
             if ext in MEDIA_EXT:
-                dst = os.path.join(outdir, f)
-                if os.path.exists(dst):
-                    base, ex = os.path.splitext(f)
-                    k = 1
-                    while os.path.exists(os.path.join(outdir, f"{base}_{k}{ex}")):
-                        k += 1
-                    dst = os.path.join(outdir, f"{base}_{k}{ex}")
-                shutil.move(src, dst)
-                moved += 1
-    for root, dirs, files in os.walk(outdir, topdown=False):
-        if root == outdir:
-            continue
-        try:
-            if not os.listdir(root):
-                os.rmdir(root)
-        except OSError:
-            pass
-    return moved
+                out.append(os.path.join(root, f))
+    return out
+
+
+def unique_dst(target, name):
+    dst = os.path.join(target, name)
+    if not os.path.exists(dst):
+        return dst
+    base, ex = os.path.splitext(name)
+    k = 1
+    while os.path.exists(os.path.join(target, f"{base}_{k}{ex}")):
+        k += 1
+    return os.path.join(target, f"{base}_{k}{ex}")
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("usage: download_tiktok.py <tiktok_url> [outdir]")
+    args = sys.argv[1:]
+    url = None
+    base_dir = "壁纸"
+    no_convert = False
+    for a in args:
+        if a == "--no-convert":
+            no_convert = True
+        elif url is None:
+            url = a
+        else:
+            base_dir = a
+
+    if not url:
+        print("usage: download_tiktok.py <tiktok_url> [base_dir] [--no-convert]")
         sys.exit(2)
 
-    url = sys.argv[1]
-    outdir = (sys.argv[2] if len(sys.argv) > 2
-              else os.path.join(os.getcwd(), "tiktok_download"))
-    os.makedirs(outdir, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d%H%M")
+    blogger = blogger_from_url(url)
+    tmp = tempfile.mkdtemp(prefix="tiktok_dl_")
 
-    ok = run_gallery_dl(url, outdir)
+    ok = run_gallery_dl(url, tmp)
     if not ok:
         print("gallery-dl 失败，回退 yt-dlp ...")
-        ok = run_ytdlp(url, outdir)
+        ok = run_ytdlp(url, tmp)
+    if not ok:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print("ERROR: 下载失败（gallery-dl 与 yt-dlp 均未成功），"
+              "请检查链接/网络/Cookie。报错可贴回诊断。")
+        sys.exit(4)
 
-    moved = flatten(outdir)
-    files = sorted(
-        os.path.join(outdir, f) for f in os.listdir(outdir)
-        if os.path.isfile(os.path.join(outdir, f))
-        and os.path.splitext(f)[1].lower() in MEDIA_EXT
-    )
-    print("DOWNLOADED", len(files), "media files ->", outdir,
-          "(从子目录归并", moved, "个)")
-    for f in files:
-        print(" -", f)
+    if not blogger:
+        blogger = blogger_from_tree(tmp)
+    if not blogger:
+        blogger = "tiktok"
 
-    if not files:
-        print("WARN: 未下载到任何媒体文件。请检查链接是否有效，"
-              "或 TikTok 是否要求登录 Cookie / 代理；报错可贴回诊断。")
+    target = os.path.join(base_dir, blogger, ts)
+    os.makedirs(target, exist_ok=True)
+
+    moved = 0
+    for f in collect_media(tmp):
+        ext = os.path.splitext(f)[1].lower()
+        if ext in SKIP_EXT:
+            continue
+        dst = unique_dst(target, os.path.basename(f))
+        shutil.move(f, dst)
+        moved += 1
+    shutil.rmtree(tmp, ignore_errors=True)
+    print(f"DOWNLOADED {moved} media files -> {target}")
+
+    if no_convert:
+        print("DONE (no-convert):", target)
+        return
+
+    conv = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "convert_tiktok_image.py")
+    if not os.path.exists(conv):
+        print("WARN: 未找到 convert_tiktok_image.py，跳过转换。原始文件已保留在", target)
+        return
+
+    ok_conv = 0
+    for f in sorted(os.listdir(target)):
+        fp = os.path.join(target, f)
+        if not os.path.isfile(fp):
+            continue
+        ext = os.path.splitext(f)[1].lower()
+        if ext not in MEDIA_EXT:
+            continue
+        if f.endswith("_wallpaper.jpg"):   # 已是成品，跳过
+            continue
+        out = os.path.join(target, os.path.splitext(f)[0] + "_wallpaper.jpg")
+        r = subprocess.run([sys.executable, conv, fp, out],
+                          capture_output=True, text=True)
+        if r.returncode == 0 and os.path.exists(out):
+            ok_conv += 1
+            try:
+                os.remove(fp)              # 转成功则删原始下载件，保持文件夹干净
+            except OSError:
+                pass
+        else:
+            print("convert fail:", f, "->", (r.stderr or '')[-300:])
+    print(f"CONVERTED {ok_conv} -> 壁纸已存于 {target}")
 
 
 if __name__ == '__main__':
