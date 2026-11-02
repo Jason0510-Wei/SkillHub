@@ -22,8 +22,9 @@
 本机若走代理，gallery-dl/requests 会自动读取 HTTP_PROXY/HTTPS_PROXY 环境变量。
 
 用法：
-  python3 download_tiktok.py <tiktok_url> [base_dir] [--no-convert]
-默认 base_dir = 当前目录下的「壁纸」；--no-convert 只下载不转壁纸（保留原始文件）。
+  python3 download_tiktok.py <tiktok_url> [base_dir] [--no-convert] [--4k]
+默认 base_dir = 当前目录下的「壁纸」；--no-convert 只下载不转壁纸（保留原始文件）；
+--4k 把转出的壁纸长边升采样到 3840（4K 尺寸，源 <4K 时为插值放大，细节不增）。
 """
 import sys
 import os
@@ -128,16 +129,19 @@ def main():
     url = None
     base_dir = "壁纸"
     no_convert = False
+    fourk = False
     for a in args:
         if a == "--no-convert":
             no_convert = True
+        elif a == "--4k":
+            fourk = True
         elif url is None:
             url = a
         else:
             base_dir = a
 
     if not url:
-        print("usage: download_tiktok.py <tiktok_url> [base_dir] [--no-convert]")
+        print("usage: download_tiktok.py <tiktok_url> [base_dir] [--no-convert] [--4k]")
         sys.exit(2)
 
     ts = datetime.datetime.now().strftime("%Y%m%d%H%M")
@@ -194,8 +198,10 @@ def main():
         if f.endswith("_wallpaper.jpg"):   # 已是成品，跳过
             continue
         out = os.path.join(target, os.path.splitext(f)[0] + "_wallpaper.jpg")
-        r = subprocess.run([sys.executable, conv, fp, out],
-                          capture_output=True, text=True)
+        conv_argv = [sys.executable, conv, fp, out]
+        if fourk:
+            conv_argv.append("--4k")
+        r = subprocess.run(conv_argv, capture_output=True, text=True)
         if r.returncode == 0 and os.path.exists(out):
             ok_conv += 1
             try:
@@ -204,7 +210,7 @@ def main():
                 pass
         else:
             print("convert fail:", f, "->", (r.stderr or '')[-300:])
-    print(f"CONVERTED {ok_conv} -> 壁纸已存于 {target}")
+    print(f"CONVERTED {ok_conv} -> 壁纸已存于 {target}" + (" [4K]" if fourk else ""))
 
 
 if __name__ == '__main__':
