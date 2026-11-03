@@ -1,0 +1,101 @@
+<!--
+  微信公众号 HTML 排版骨架
+  ------------------------------------------------------------
+  用法：全选复制 → 粘贴进 微信编辑器 / 秀米 / 135编辑器
+  硬性约束：
+    · 不得使用 <style> 标签（微信会过滤），全部 inline style
+    · 不得使用 flex / grid（部分客户端失效），用 inline-block 或普通块
+    · 图片需先在编辑器里上传，本模板不内置 img 标签
+    · 根容器 max-width:677px（微信正文宽度）
+  占位：{{...}} 全部替换掉，不要留空模板块
+-->
+
+<section style="max-width:677px;margin:0 auto;padding:0 4px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',Arial,sans-serif;font-size:16px;line-height:1.9;color:#3f3f3f;letter-spacing:0.4px;word-break:break-word;">
+
+  <!-- ===== 组件 1：导语卡片（人设出场 / 观点前置）===== -->
+  <section style="margin:0 0 28px;padding:18px 20px;background:#f5f7fa;border-radius:8px;">
+    <p style="margin:0 0 10px;font-size:16px;line-height:1.9;color:#333;font-weight:600;">
+      {{人设出场句，如：🐒 猴子冲浪回来了。}}
+    </p>
+    <p style="margin:0;font-size:15px;line-height:1.9;color:#555;">
+      {{一句观点 + <strong style="color:#1a56db;">加粗核心判断</strong>}}
+    </p>
+  </section>
+
+  <p style="margin:0 0 16px;">{{正文段落}}</p>
+
+  <!-- ===== 组件 2：编号小标题 ===== -->
+  <section style="margin:40px 0 20px;">
+    <span style="display:inline-block;background:#1a56db;color:#ffffff;font-size:13px;font-weight:600;padding:3px 10px;border-radius:4px;letter-spacing:1px;">01</span>
+    <span style="font-size:19px;font-weight:700;color:#111;margin-left:10px;letter-spacing:0.5px;">{{小标题，8-14字}}</span>
+  </section>
+
+  <p style="margin:0 0 16px;">{{段落}}</p>
+  <p style="margin:0 0 16px;">{{段落，<strong style="color:#1a56db;">关键词加粗</strong>}}</p>
+
+  <!-- ===== 组件 3：引用块（蓝，中性引用）===== -->
+  <section style="margin:20px 0;padding:16px 18px;background:#f5f7fa;border-left:3px solid #1a56db;border-radius:0 6px 6px 0;">
+    <p style="margin:0;font-size:15px;line-height:1.85;color:#4a4a4a;">{{引用内容}}</p>
+  </section>
+
+  <!-- ===== 组件 3b：引用块（橙，警示/反常识）===== -->
+  <section style="margin:20px 0;padding:16px 18px;background:#fff8ee;border-left:3px solid #f59e0b;border-radius:0 6px 6px 0;">
+    <p style="margin:0;font-size:15px;line-height:1.85;color:#8a5a00;font-weight:600;">{{值得被记住的一句话}}</p>
+  </section>
+
+  <!-- ===== 组件 3c：引用块（红，风险/否定）===== -->
+  <section style="margin:20px 0;padding:16px 18px;background:#fff5f5;border-left:3px solid #dc2626;border-radius:0 6px 6px 0;">
+    <p style="margin:0;font-size:15px;line-height:1.85;color:#9b2c2c;">{{负面结论 / 处罚 / 风险}}</p>
+  </section>
+
+  <!-- ===== 组件 4：配图图位（生成图后整块替换为 <img> 或编辑器上传的图片）===== -->
+  <section style="margin:26px 0;padding:16px 18px;background:#fffbe6;border:1px dashed #e0b73a;border-radius:8px;">
+    <p style="margin:0 0 10px;font-size:13px;color:#8a6a00;font-weight:700;letter-spacing:0.5px;">🖼 图位 {{N}} · 生成后整块替换为图片</p>
+    <p style="margin:0 0 8px;font-size:13px;line-height:1.75;color:#7a6000;"><strong>画面：</strong>{{主体、构图、相对位置，写具体，别写"科技感"}}</p>
+    <p style="margin:0 0 8px;font-size:13px;line-height:1.75;color:#7a6000;"><strong>色调：</strong>{{具体色向，如 浅灰白底 + 深蓝主色}}</p>
+    <p style="margin:0 0 8px;font-size:13px;line-height:1.75;color:#7a6000;"><strong>尺寸：</strong>{{1080×810（4:3）}}</p>
+    <p style="margin:0;font-size:13px;line-height:1.75;color:#7a6000;"><strong>提示词：</strong>{{English prompt, comma separated, ends with no text, no watermark, 4:3}}</p>
+    <p style="margin:8px 0 0;font-size:12px;line-height:1.7;color:#9a7f2e;">⚠️ 中文文字不要交给 AI（必糊），出图后自己加。这张用来{{做封面／撬转发／当记忆锚点}}。</p>
+  </section>
+
+  <!-- ===== 组件 5：数据卡（2-4 行指标）===== -->
+  <section style="margin:22px 0;padding:4px 0;background:#fafbfc;border:1px solid #e8ecf1;border-radius:8px;">
+    <section style="padding:14px 20px;border-bottom:1px solid #eef1f5;">
+      <p style="margin:0;font-size:13px;color:#888;letter-spacing:0.5px;">{{指标名}}</p>
+      <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#1a56db;letter-spacing:0;">{{数值}} <span style="font-size:13px;font-weight:400;color:#888;">{{备注}}</span></p>
+    </section>
+    <section style="padding:14px 20px;">
+      <p style="margin:0;font-size:13px;color:#888;letter-spacing:0.5px;">{{指标名}}</p>
+      <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#dc2626;letter-spacing:0;">{{数值}} <span style="font-size:13px;font-weight:400;color:#888;">{{备注}}</span></p>
+    </section>
+  </section>
+
+  <!-- ===== 组件 6：深色金句卡（全文记忆锚点，一篇最多用 2 次）===== -->
+  <section style="margin:22px 0;padding:18px 20px;background:#1a1f2e;border-radius:8px;">
+    <p style="margin:0;font-size:16px;line-height:1.9;color:#e8ecf1;text-align:center;letter-spacing:0.5px;">{{金句}}</p>
+    <p style="margin:8px 0 0;font-size:14px;line-height:1.8;color:#9aa5b8;text-align:center;">{{补充一句，可换行}}</p>
+  </section>
+
+  <!-- ===== 组件 7：要点清单卡（三句话建议）===== -->
+  <section style="margin:18px 0;padding:16px 18px;background:#f0f7ff;border-radius:8px;">
+    <p style="margin:0 0 14px;font-size:15px;line-height:1.85;color:#333;"><strong style="color:#1a56db;">第一，{{要点}}。</strong>{{解释}}</p>
+    <p style="margin:0 0 14px;font-size:15px;line-height:1.85;color:#333;"><strong style="color:#1a56db;">第二，{{要点}}。</strong>{{解释}}</p>
+    <p style="margin:0;font-size:15px;line-height:1.85;color:#333;"><strong style="color:#1a56db;">第三，{{要点}}。</strong>{{解释}}</p>
+  </section>
+
+  <!-- ===== 组件 8：分隔点 ===== -->
+  <section style="margin:36px 0 0;padding:0;">
+    <p style="margin:0;text-align:center;color:#c9d1dc;font-size:13px;letter-spacing:6px;">· · ·</p>
+  </section>
+
+  <!-- ===== 组件 9：互动区（深色，必放）===== -->
+  <section style="margin:24px 0 0;padding:20px;background:#1a1f2e;border-radius:10px;">
+    <p style="margin:0 0 10px;font-size:15px;line-height:1.85;color:#e8ecf1;font-weight:600;">💬 今日互动</p>
+    <p style="margin:0 0 14px;font-size:15px;line-height:1.85;color:#c3cbd8;">{{提问，要能用三个字答}}</p>
+    <p style="margin:0;font-size:15px;line-height:1.85;color:#c3cbd8;">{{引导句}}</p>
+  </section>
+
+  <!-- ===== 组件 10：免责声明（涉及财务/医疗/法律必放）===== -->
+  <p style="margin:26px 0 8px;font-size:12px;line-height:1.8;color:#9aa0a6;">{{本文信息整理自……，涉及……请以官方公告为准。}}</p>
+
+</section>
