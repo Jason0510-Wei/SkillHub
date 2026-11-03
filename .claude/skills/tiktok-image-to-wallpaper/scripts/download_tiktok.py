@@ -12,6 +12,10 @@
 
 每个链接一个时间文件夹、每个博主一个文件夹，方便按人归档。
 
+转成壁纸后，本脚本会把同文件夹内的 *_wallpaper.jpg 按 TikTok 幻灯片的原始顺序
+（gallery-dl 文件名里的 _NN 序号）重命名为 1_wallpaper.jpg、2_wallpaper.jpg、3_wallpaper.jpg …，
+文件名中的原始 caption / hash 会被丢弃，仅保留位置序号，便于按序浏览与引用。
+
 下载器优先级：
   1. gallery-dl（首选）：TikTok 提取器成熟，能处理「图文/幻灯片」帖子（/photo/ 路径），
      并自动解 TikTok 的 JS 挑战（反爬），通常无需登录 Cookie 即可下到图片。
@@ -124,6 +128,40 @@ def unique_dst(target, name):
     return os.path.join(target, f"{base}_{k}{ex}")
 
 
+def slide_index(fname):
+    """从 gallery-dl 命名的壁纸文件里取出幻灯片序号（<postid>_NN ...）。"""
+    stem = os.path.splitext(fname)[0]
+    if stem.endswith("_wallpaper"):
+        stem = stem[:-len("_wallpaper")]
+    m = re.match(r'^(\d+)_(\d+)', stem)        # gallery-dl: <postid>_<NN>
+    if m:
+        return int(m.group(2))
+    m = re.search(r'_(\d+)', stem)             # 兜底：任意 _数字
+    if m:
+        return int(m.group(1))
+    return 0
+
+
+def renumber(target):
+    """把目录下所有 *_wallpaper.jpg 按原幻灯片顺序重命名为 1_、2_、3_ ...。"""
+    walls = [f for f in os.listdir(target)
+             if f.endswith("_wallpaper.jpg")
+             and os.path.isfile(os.path.join(target, f))]
+    if not walls:
+        return 0
+    walls.sort(key=slide_index)
+    # 两阶段重命名，避免同目录内互相覆盖
+    tmp_map = []
+    for i, f in enumerate(walls, 1):
+        src = os.path.join(target, f)
+        tmp = os.path.join(target, f".rk{i:04d}.jpg")
+        os.rename(src, tmp)
+        tmp_map.append((tmp, os.path.join(target, f"{i}_wallpaper.jpg")))
+    for tmp, final in tmp_map:
+        os.rename(tmp, final)
+    return len(walls)
+
+
 def main():
     args = sys.argv[1:]
     url = None
@@ -144,8 +182,11 @@ def main():
         print("usage: download_tiktok.py <tiktok_url> [base_dir] [--no-convert] [--4k]")
         sys.exit(2)
 
-    ts = datetime.datetime.now().strftime("%Y%m%d%H%M")
     blogger = blogger_from_url(url)
+    post_id = None
+    pm = re.search(r'/(?:phot|vide)o/(\d+)', url)
+    if pm:
+        post_id = pm.group(1)
     tmp = tempfile.mkdtemp(prefix="tiktok_dl_")
 
     ok = run_gallery_dl(url, tmp)
@@ -163,8 +204,17 @@ def main():
     if not blogger:
         blogger = "tiktok"
 
-    target = os.path.join(base_dir, blogger, ts)
+    # 每个帖子一个独立文件夹：时间戳(秒级) + post id，避免同分钟内多次下载互相覆盖/合并
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder_name = f"{ts}_{post_id}" if post_id else ts
+    target = os.path.join(base_dir, blogger, folder_name)
+    if os.path.exists(target):           # 极端同秒碰撞时追加序号
+        k = 1
+        while os.path.exists(f"{target}_{k}"):
+            k += 1
+        target = f"{target}_{k}"
     os.makedirs(target, exist_ok=True)
+    originals_dir = os.path.join(target, ".originals")
 
     moved = 0
     for f in collect_media(tmp):
@@ -204,13 +254,21 @@ def main():
         r = subprocess.run(conv_argv, capture_output=True, text=True)
         if r.returncode == 0 and os.path.exists(out):
             ok_conv += 1
+            # 转成功则把原始下载件移入 .originals/（不删除，规避环境批量删除保护）
             try:
-                os.remove(fp)              # 转成功则删原始下载件，保持文件夹干净
+                if not os.path.isdir(originals_dir):
+                    os.makedirs(originals_dir, exist_ok=True)
+                shutil.move(fp, os.path.join(originals_dir, os.path.basename(fp)))
             except OSError:
                 pass
         else:
             print("convert fail:", f, "->", (r.stderr or '')[-300:])
-    print(f"CONVERTED {ok_conv} -> 壁纸已存于 {target}" + (" [4K]" if fourk else ""))
+    print(f"CONVERTED {ok_conv} -> 壁纸已存于 {target}" + (" [4K]" if fourk else "") +
+          ("（原始下载件已移入 .originals/）" if ok_conv else ""))
+
+    n = renumber(target)
+    if n:
+        print(f"RENAMED {n} -> 已按原顺序编号为 1..{n}_wallpaper.jpg")
 
 
 if __name__ == '__main__':
