@@ -8,13 +8,14 @@
 | Skill | 功能 | 用法 |
 |-------|------|------|
 | 🧠 **whitepaper** | 白皮书 / 行业报告解读 → 多平台选题 + 自动配图 | 丢 PDF 进 `输入/`，说"解读 xxx.pdf" |
+| ✍️ **tri-platform-rewrite** | 一份 PDF / 长文 / 日报 → 头条 + 百家号 + 公众号三平台稿件（差异化改写 + 各平台排版 + 合规与查重自检） | 丢 PDF，说"按三平台洗" |
 | 🔥 **hotspot** | 抓今日全网热点 + 按赛道打分 + 自动出封面图 | 说"今天有什么热点" |
 | 📊 **review** | 导入平台数据 CSV/XLSX → 周报 + 下周建议 | 说"复盘 xxx.xlsx" |
 | 🎨 **xhs-poster** | 小红书 6 图套图生成器（文案 + AI 配图） | 说"做一套小红书图文" |
 | 🖼️ **hy-image-generation** | 腾讯云混元生图 3.0，文生图 / 图生图 | 说"用混元画一只猫" |
 | 📱 **tiktok-image-to-wallpaper** | TikTok `.image`（VVC/HEIF 私有格式）→ 手机壁纸 JPEG；也支持**直接丢 TikTok 链接**，自动下载图片再转 | 丢 `.image` 或 TikTok 链接，说"转成手机壁纸" |
 
-前四个 Skill 共享一份**账号画像**配置，改一次全部生效。
+whitepaper / hotspot / review / xhs-poster 四个 Skill 共享一份**账号画像**配置，改一次全部生效。
 
 ## 🎁 可选增强：接入图片生成
 
@@ -104,6 +105,7 @@ claude
 self-media-toolkit/
 ├── .claude/skills/          # AI Skill（不用管）
 │   ├── whitepaper/          # 白皮书解读
+│   ├── tri-platform-rewrite/ # 一稿三发（头条/百家号/公众号）
 │   ├── hotspot/             # 热点抓取
 │   ├── review/              # 数据复盘
 │   ├── xhs-poster/          # 小红书套图
@@ -157,6 +159,15 @@ git pull
 先抓今日热点，然后结合 输入/XX白皮书.pdf，
 给我出 3 条本周能拍的短视频脚本。
 ```
+
+### 一份报告，三个平台
+
+```
+把 输入/XX行业报告.pdf 洗成三个平台的稿子，
+头条和百家号要大白话，公众号保留深度，我检查后自己发。
+```
+
+产出：`公众号.html`（可直接粘进微信编辑器）、`头条.md`、`百家号.md`（都带发布元信息头）、`发布说明.md`（标题候选 / 发布时间 / 配图提示词 / 合规清单）。
 
 ### AI 生图
 
