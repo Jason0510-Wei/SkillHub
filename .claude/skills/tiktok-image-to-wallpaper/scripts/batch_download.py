@@ -12,8 +12,10 @@
   3. 从含 url 列的 CSV 读取全部：
        python3 batch_download.py --from <file.csv> [--base-dir DIR] [--4k]
 
-每条链接都会调用同目录下的 download_tiktok.py 完成「下载 + 转壁纸 + 按序编号」。
---4k 透传给 download_tiktok.py（长边升采样到 3840）。
+每条链接都会调用同目录下的 download_tiktok.py 完成「下载 + 按序编号」。
+默认「原图直出」：不转码、保留原始分辨率与格式，直接按 1..N 编号。
+只有显式加 --convert 才走旧转码流程（宽度≤1080 JPG，原图移入 .originals/）；
+--4k 为转码升采样模式（会隐含启用转码）。两者默认都不配置。
 
 去重（--skip-existing，默认开启）：
   下载前会检查 <base-dir>/<author>/ 下是否已有该帖子的文件：
@@ -23,8 +25,9 @@
   命中则跳过，避免重复下载。用 --force 可强制重下。
 
 用法：
-  python3 batch_download.py <urls...> [--base-dir DIR] [--4k] [--force]
-  python3 batch_download.py --from <csv> [--top N | --pick a,b,c] [--base-dir DIR] [--4k] [--force]
+  python3 batch_download.py <urls...> [--base-dir DIR] [--convert] [--4k] [--force]
+  python3 batch_download.py --from <csv> [--top N | --pick a,b,c] [--base-dir DIR] [--convert] [--4k] [--force]
+默认：原图直出（不转码）；--convert 显式启用转码；--4k 转码升采样到 3840。
 """
 import sys
 import os
@@ -165,6 +168,7 @@ def main():
     urls = []
     base_dir = "壁纸"
     fourk = False
+    convert = False
     from_csv = None
     top = 0
     pick = None
@@ -183,6 +187,8 @@ def main():
             pick = args[i + 1]; i += 2; continue
         if a == "--4k":
             fourk = True; i += 1; continue
+        if a == "--convert":
+            convert = True; i += 1; continue
         if a == "--force":
             skip_existing = False; i += 1; continue
         if a == "--no-skip":
@@ -205,7 +211,8 @@ def main():
     base_dir = os.path.abspath(base_dir)
     manifest, mp = load_manifest(base_dir, author_of(urls[0]))
 
-    print(f"待处理 {len(urls)} 条，base-dir={base_dir}{' [4K]' if fourk else ''}"
+    mode = "转码1080" if convert else ("转码4K" if fourk else "原图直出(默认)")
+    print(f"待处理 {len(urls)} 条，base-dir={base_dir} [{mode}]"
           f"{' [去重开启]' if skip_existing else ' [强制重下]'}")
     ok = 0
     skipped = 0
@@ -221,6 +228,8 @@ def main():
                 continue
         print(f"\n----- [{n}/{len(urls)}] {tag} -----")
         cmd = [sys.executable, DOWNLOAD, u, base_dir]
+        if convert:
+            cmd.append("--convert")
         if fourk:
             cmd.append("--4k")
         r = subprocess.run(cmd)
