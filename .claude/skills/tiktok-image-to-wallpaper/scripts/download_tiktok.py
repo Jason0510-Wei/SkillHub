@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-从 TikTok 链接下载图片/视频，并直接转成手机壁纸 JPEG，按下面的目录结构落盘：
+从 TikTok 链接下载图片/视频，按下面的目录结构落盘：
 
-    <base_dir>/<博主>/<时间戳YYYYMMDDHHMM>/
+    <base_dir>/<博主>/<时间戳YYYYMMDD_HHMMSS>_<帖子ID>/
 
 其中：
   - <base_dir> 默认是执行目录下的「壁纸」文件夹（可用第 2 个参数覆盖）；
   - <博主>    自动从链接识别 TikTok handle（@username），识别不到时退化为 "tiktok"；
-  - <时间戳>  本条链接保存时的本地时间，格式 YYYYMMDDHHMM（如 202611021238）。
+  - <时间戳>  本条链接保存时的本地时间（秒级），后缀帖子ID 保证每个帖子独立文件夹。
 
-每个链接一个时间文件夹、每个博主一个文件夹，方便按人归档。
+【默认行为：原图直出，零转码】
+  下载到的原始媒体文件不经过任何重编码，直接按 TikTok 幻灯片原始顺序
+  （gallery-dl 文件名里的 _NN 序号）重命名为
+  1_wallpaper.<原扩展名>、2_wallpaper.<原扩展名>、3_wallpaper.<原扩展名> …
+  保留原始分辨率与原始编码，无二次 JPEG 压缩，也不再产生 .originals/ 子目录。
+  （实测：源图常有 1536px 甚至 5736×8192，旧的默认封顶 1080 会损失大量细节。）
 
-转成壁纸后，本脚本会把同文件夹内的 *_wallpaper.jpg 按 TikTok 幻灯片的原始顺序
-（gallery-dl 文件名里的 _NN 序号）重命名为 1_wallpaper.jpg、2_wallpaper.jpg、3_wallpaper.jpg …，
-文件名中的原始 caption / hash 会被丢弃，仅保留位置序号，便于按序浏览与引用。
+【可选：显式转码】
+  只有显式加 --convert 才走旧的转码流程（convert_tiktok_image.py）：
+  转成宽度 ≤1080 的 JPEG，原始下载件移入 .originals/ 留档。
+  --4k 与 --convert 同用时把长边升采样到 3840（仅尺寸放大、细节不增）。
+  --4k 单独给出时会自动隐含启用 --convert。
+
+  历史参数 --no-convert 保留为兼容 no-op（现在默认就是不转码）。
 
 下载器优先级：
   1. gallery-dl（首选）：TikTok 提取器成熟，能处理「图文/幻灯片」帖子（/photo/ 路径），
@@ -26,9 +35,8 @@
 本机若走代理，gallery-dl/requests 会自动读取 HTTP_PROXY/HTTPS_PROXY 环境变量。
 
 用法：
-  python3 download_tiktok.py <tiktok_url> [base_dir] [--no-convert] [--4k]
-默认 base_dir = 当前目录下的「壁纸」；--no-convert 只下载不转壁纸（保留原始文件）；
---4k 把转出的壁纸长边升采样到 3840（4K 尺寸，源 <4K 时为插值放大，细节不增）。
+  python3 download_tiktok.py <tiktok_url> [base_dir] [--convert] [--4k]
+默认 base_dir = 当前目录下的「壁纸」；默认不转码、原图按编号直出。
 """
 import sys
 import os
@@ -43,6 +51,8 @@ MEDIA_EXT = ('.jpg', '.jpeg', '.png', '.webp', '.image', '.heic',
              '.avif', '.gif', '.bmp', '.mp4', '.mov', '.webm', '.mkv')
 # 纯音频直接排除（壁纸不关心）
 SKIP_EXT = ('.mp3', '.m4a', '.wav', '.aac', '.ogg')
+# 普通看图软件可能打不开的私有/新格式（仅用于提示，不影响行为）
+UNUSUAL_EXT = ('.image', '.heic', '.avif')
 
 
 def ensure(module, pkg):
@@ -129,7 +139,7 @@ def unique_dst(target, name):
 
 
 def slide_index(fname):
-    """从 gallery-dl 命名的壁纸文件里取出幻灯片序号（<postid>_NN ...）。"""
+    """从 gallery-dl 命名的媒体文件里取出幻灯片序号（<postid>_NN ...）。"""
     stem = os.path.splitext(fname)[0]
     if stem.endswith("_wallpaper"):
         stem = stem[:-len("_wallpaper")]
@@ -142,44 +152,58 @@ def slide_index(fname):
     return 0
 
 
+def renumber_media(target, files):
+    """把 files 按原幻灯片顺序重命名为 1_wallpaper.<原扩展名>、2_ ...。
+
+    保留每个文件的原始扩展名（默认原图模式下不转码，扩展名各异）。
+    两阶段重命名，避免同目录内互相覆盖。
+    """
+    files = [f for f in files if os.path.isfile(os.path.join(target, f))]
+    if not files:
+        return 0
+    files.sort(key=slide_index)
+    tmp_map = []
+    for i, f in enumerate(files, 1):
+        ext = os.path.splitext(f)[1].lower() or ".jpg"
+        src = os.path.join(target, f)
+        tmp = os.path.join(target, f".rk{i:04d}{ext}")
+        os.rename(src, tmp)
+        tmp_map.append((tmp, os.path.join(target, f"{i}_wallpaper{ext}")))
+    for tmp, final in tmp_map:
+        os.rename(tmp, final)
+    return len(files)
+
+
 def renumber(target):
-    """把目录下所有 *_wallpaper.jpg 按原幻灯片顺序重命名为 1_、2_、3_ ...。"""
+    """兼容旧调用：对目录下已生成的 *_wallpaper.jpg 编号。"""
     walls = [f for f in os.listdir(target)
              if f.endswith("_wallpaper.jpg")
              and os.path.isfile(os.path.join(target, f))]
-    if not walls:
-        return 0
-    walls.sort(key=slide_index)
-    # 两阶段重命名，避免同目录内互相覆盖
-    tmp_map = []
-    for i, f in enumerate(walls, 1):
-        src = os.path.join(target, f)
-        tmp = os.path.join(target, f".rk{i:04d}.jpg")
-        os.rename(src, tmp)
-        tmp_map.append((tmp, os.path.join(target, f"{i}_wallpaper.jpg")))
-    for tmp, final in tmp_map:
-        os.rename(tmp, final)
-    return len(walls)
+    return renumber_media(target, walls)
 
 
 def main():
     args = sys.argv[1:]
     url = None
     base_dir = "壁纸"
-    no_convert = False
+    convert = False
     fourk = False
     for a in args:
-        if a == "--no-convert":
-            no_convert = True
+        if a == "--convert":
+            convert = True
         elif a == "--4k":
             fourk = True
+            convert = True            # 4K 属于转码模式，隐含启用
+        elif a == "--no-convert":
+            # 兼容旧参数：现在默认就是不转码，退化为 no-op
+            pass
         elif url is None:
             url = a
         else:
             base_dir = a
 
     if not url:
-        print("usage: download_tiktok.py <tiktok_url> [base_dir] [--no-convert] [--4k]")
+        print("usage: download_tiktok.py <tiktok_url> [base_dir] [--convert] [--4k]")
         sys.exit(2)
 
     blogger = blogger_from_url(url)
@@ -227,10 +251,23 @@ def main():
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"DOWNLOADED {moved} media files -> {target}")
 
-    if no_convert:
-        print("DONE (no-convert):", target)
+    # ---------- 默认：原图直出，零转码，直接按序编号 ----------
+    if not convert:
+        raw = [f for f in os.listdir(target)
+               if os.path.isfile(os.path.join(target, f))
+               and os.path.splitext(f)[1].lower() in MEDIA_EXT
+               and not re.match(r'^\d+_wallpaper\.', f)]
+        n = renumber_media(target, raw)
+        if n:
+            print(f"RENAMED {n} -> 原图按原顺序编号为 1..{n}_wallpaper.<原格式>（未转码，保留原始分辨率）")
+        odd = [f for f in raw if os.path.splitext(f)[1].lower() in UNUSUAL_EXT]
+        if odd:
+            print(f"提示: {len(odd)} 个文件是私有/新格式（.image/.heic/.avif 等），"
+                  "普通看图软件可能打不开；如需转成通用 JPG 请加 --convert")
+        print("DONE (原图模式):", target)
         return
 
+    # ---------- 可选：显式 --convert 才走转码 ----------
     conv = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "convert_tiktok_image.py")
     if not os.path.exists(conv):

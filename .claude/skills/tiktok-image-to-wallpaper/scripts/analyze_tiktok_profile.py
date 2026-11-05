@@ -58,9 +58,13 @@ def ensure(module, pkg):
 
 def _yt_dlp_print(url, template):
     cmd = [sys.executable, "-m", "yt_dlp", "--no-warnings", "--skip-download",
+           "--socket-timeout", "20", "--retries", "1",
            "--print", template, url]
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    return (r.stdout or "").strip(), (r.stderr or "")
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        return (r.stdout or "").strip(), (r.stderr or "")
+    except subprocess.TimeoutExpired:
+        return "", "TIMEOUT"
 
 
 def resolve_target(url):
@@ -84,17 +88,14 @@ def resolve_target(url):
         if out and not out.startswith("ERROR"):
             blogger = out.strip()
 
+    # 只有「帖子链接」才值得去取 secUid（帖子页能稳定给 channel_id）。
+    # 纯主页链接取 secUid 常被挑战且耗时，主页本身即可直接列举，故跳过。
     sec_uid = None
-    if ensure("yt_dlp", "yt-dlp"):
-        if post_id and blogger:
-            probe = f"https://www.tiktok.com/@{blogger}/video/{post_id}"
-        elif blogger:
-            probe = f"https://www.tiktok.com/@{blogger}"
-        else:
-            probe = url
+    if ensure("yt_dlp", "yt-dlp") and post_id and blogger:
+        probe = f"https://www.tiktok.com/@{blogger}/video/{post_id}"
         for attempt in range(1, 4):
             out, err = _yt_dlp_print(probe, "%(channel_id)s")
-            if out and not out.startswith("ERROR"):
+            if out and not out.startswith("ERROR") and out.startswith("MS4w"):
                 sec_uid = out.strip()
                 break
             if attempt < 3:
@@ -111,17 +112,27 @@ def _try_fetch(listing_url):
            f"%(comment_count)s{SEP}%(duration)s{SEP}%(upload_date)s{SEP}"
            f"%(title)s")
     cmd = [sys.executable, "-m", "yt_dlp", "--flat-playlist", "--no-warnings",
-           "--skip-download", "--print", fmt, listing_url]
+           "--skip-download", "--socket-timeout", "20", "--retries", "1",
+           "--print", fmt, listing_url]
+    last_err = ""
     for attempt in range(1, 4):
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            last_err = "TIMEOUT"
+            print(f"  yt-dlp 第 {attempt} 次超时，8 秒后重试 ...")
+            if attempt < 3:
+                time.sleep(8)
+            continue
         out = (r.stdout or "").strip()
         if out and not out.startswith("ERROR"):
             return _parse(out)
+        last_err = (r.stderr or '')[-1200:]
         if attempt < 3:
             print(f"  yt-dlp 第 {attempt} 次未取到（可能限流/挑战），8 秒后重试 ...")
             time.sleep(8)
-    if r.returncode != 0:
-        print("yt-dlp 报错（末段）：\n", (r.stderr or '')[-1200:])
+    if last_err:
+        print("yt-dlp 报错（末段）：\n", last_err)
     return []
 
 
@@ -173,14 +184,24 @@ def _parse(stdout):
 
 
 def fetch_profile(blogger, sec_uid):
-    """枚举全量作品：优先 tiktokuser:<secUid>（最稳），退化为主页 URL。"""
+    """枚举全量作品：多候选 URL 依次尝试，任一成功即返回。
+
+    首选主页 `https://www.tiktok.com/@<handle>`（yt-dlp 直接支持，实测最可靠）。
+    secUid 兜底用 `https://www.tiktok.com/@<secUid>` 形式——旧版脚本用的
+    `tiktokuser:<secUid>` 伪协议在 yt-dlp 2026.10.26 已失效，会报
+    `Unsupported url scheme: "tiktokuser"`。
+    """
+    candidates = []
+    if blogger:
+        candidates.append(f"https://www.tiktok.com/@{blogger}")
     if sec_uid:
-        recs = _try_fetch(f"tiktokuser:{sec_uid}")
+        candidates.append(f"https://www.tiktok.com/@{sec_uid}")
+    for u in candidates:
+        print(f"  尝试列举: {u}")
+        recs = _try_fetch(u)
         if recs:
             return recs
-        print("  用 secUid 列举失败，退化为对主页列举 ...")
-    if blogger:
-        return _try_fetch(f"https://www.tiktok.com/@{blogger}")
+        print("  该路径未取到，换下一种 ...")
     return []
 
 

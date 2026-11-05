@@ -1,9 +1,9 @@
 ---
 name: tiktok-image-to-wallpaper
 description: >-
-  把 TikTok 的图片变成手机壁纸 JPEG。三种入口：① 用户直接丢来 TikTok 链接 —— 先用 gallery-dl 下载链接里的图片，再逐个转成手机壁纸 JPEG；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 直接转；③「博主作品分析 + 批量下载」—— 用户丢来任意一条能定位到博主的 TikTok 链接（帖子/@主页/短链），脚本先用 yt-dlp 定位博主主页、枚举其全部作品并按「受欢迎程度（点赞/播放/评论）」降序排出排行榜，发回给用户，由用户决定下载哪些，再用 batch_download.py 批量下载转壁纸。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、分析这个博主的作品、把博主所有作品按热度排个序、批量下载博主壁纸。解码依赖本机 ffmpeg 的 vvc 解码器；下载依赖 gallery-dl（首选，自动解 TikTok JS 挑战、支持 /photo/ 图文帖）/ yt-dlp（兜底，兼枚举全量作品）；分析依赖 yt-dlp。下载结果按 壁纸/<博主>/<时间戳YYYYMMDDHHMM>/ 目录归档。
+  把 TikTok 的图片下载成手机壁纸。三种入口：① 用户直接丢来 TikTok 链接 —— 用 gallery-dl 下载帖子里的图片，**默认原图直出、零转码**，按 1..N 编号归档；转码（宽度≤1080 JPEG / --4k 升采样）降级为显式参数，默认不启用；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 用 ffmpeg vvc 解码器转成 JPG；③「博主作品分析 + 批量下载」—— 任意能定位到博主的 TikTok 链接（帖子/@主页/短链），先用 yt-dlp 枚举全部作品并按「受欢迎程度（点赞/播放/评论）」降序出排行榜，用户圈定后再用 batch_download.py 批量下载（自带去重）。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、分析这个博主的作品、把博主所有作品按热度排个序、批量下载博主壁纸。下载依赖 gallery-dl（首选，自动解 TikTok JS 挑战、支持 /photo/ 图文帖）/ yt-dlp（兜底，兼枚举全量作品）；分析依赖 yt-dlp；转码/本地 .image 解码才需要 ffmpeg vvc 解码器。归档按 壁纸/<博主>/<时间戳_帖子ID>/ 每个帖子独立文件夹。
 agent_created: true
-version: 1.6.1
+version: 1.7.0
 display_name: "TikTok图片转手机壁纸"
 display_name_en: "TikTok Image to Phone Wallpaper"
 description_zh: "从 TikTok 链接下载图片或读取本地 .image，转换为手机壁纸 JPEG。"
@@ -18,8 +18,11 @@ visibility: "user"
 ## 这是什么
 
 TikTok 保存的 `*.image` 文件其实是 **VVC（H.266）编码的 HEIF 容器**（brand `vvic`，编码项 `vvc1`），
-几乎没有任何看图软件内置 VVC 解码器，所以会“打不开”。本 skill 用 ffmpeg 的 `vvc` 解码器把它还原成普通 JPEG；
-如果用户给的是 TikTok **链接**，则先用 gallery-dl 把帖子里的图片下载下来，再转。
+几乎没有任何看图软件内置 VVC 解码器，所以会“打不开”。本 skill 用 ffmpeg 的 `vvc` 解码器把它还原成普通 JPEG（入口 B）。
+
+如果用户给的是 TikTok **链接**（入口 A），则用 gallery-dl 把帖子里的图片下载下来，**默认原图直出、按序编号、不转码**；
+只有显式加 `--convert` 才转成宽度 ≤1080 的 JPEG。这样能保留源图的真实分辨率（实测有 1536px 乃至 5736×8192），
+尤其适合作为小红书 / 公众号的发布素材。
 
 ## 前置条件
 
@@ -49,16 +52,26 @@ python3 "<skill_dir>/scripts/download_tiktok.py" "<tiktok_url>"
    例：壁纸/vexaro.4k/20261103_120050_7695439146944400660/
    ```
    （每个博主一个文件夹，**每个帖子一个独立文件夹**——帖子ID写进文件夹名，避免同分钟内多次下载互相覆盖/合并到同一文件夹）
-4. 把每个文件转成手机壁纸 JPEG（**默认宽度 ≤1080**；加 `--4k` 则长边升采样到 3840），成功后再把原始下载件移入该文件夹下的 `.originals/` 子目录（**不直接删除**，以规避本环境的批量删除保护机制），文件夹里只留 `<原名>_wallpaper.jpg`。**转换结束会打印每张的实际分辨率**（如 `1080x1920`），方便核对到底几 K。
-5. **按原顺序编号**：同一帖子里的多张壁纸会按 TikTok 幻灯片的原始顺序（gallery-dl 文件名里的 `_NN` 序号）重命名为 `1_wallpaper.jpg`、`2_wallpaper.jpg`、`3_wallpaper.jpg` …，文件名中的 caption / hash 会被丢弃，仅保留位置序号，便于按序浏览与引用。
+4. **默认「原图直出」（v1.7.0 起）：不做任何转码**。下载到的原始媒体文件保留原始分辨率、原始格式与原始编码（无二次 JPEG 压缩），也不产生 `.originals/` 子目录。实测源图常在 1536px、甚至 5736×8192，旧的默认封顶 1080 会损失大量细节；发布到小红书/公众号时源图越清晰越占优。
+5. **按原顺序编号**：同一帖子里的多个文件按 TikTok 幻灯片的原始顺序（gallery-dl 文件名里的 `_NN` 序号）重命名为 `1_wallpaper.<原扩展名>`、`2_wallpaper.<原扩展名>` …，文件名中的 caption / hash 会被丢弃，仅保留位置序号。原图模式下**保留各自原始扩展名**（jpg/png/webp/…），不再统一改成 jpg。
 
-- 想自定义根目录（不用默认「壁纸」）：第 2 个参数传路径，如 `"D:/壁纸"`。
-- 只想下载、不转壁纸（保留原始文件）：末尾加 `--no-convert`。
-- 想要 4K 尺寸输出：末尾加 `--4k`（长边升采样到 3840）。**注意**：源本就 <4K（TikTok 图文帖源通常只有 942–1080px 宽），`--4k` 是**插值放大**，仅尺寸到 4K、细节不会凭空增加；若需要真·4K 细节，需接 AI 超分（Real-ESRGAN 等），属后续增强。
+**转码是可配置参数，默认不配置**：只有显式加开关才走旧的转码流程。
 
-2. 用 `present_files` 把 `壁纸/<博主>/<时间戳>/` 里的 JPG 展示给用户。
+| 命令 | 行为 |
+|------|------|
+| `download_tiktok.py <url>` | **默认**：原图直出 + 按序编号，零转码 |
+| `download_tiktok.py <url> <base_dir> --convert` | 转码成宽度 ≤1080 的 JPEG（`-q:v 3`），原始下载件移入 `.originals/` 留档，成品统一 `_wallpaper.jpg` |
+| `download_tiktok.py <url> <base_dir> --4k` | 转码时长边升采样到 3840（`--4k` 会隐含启用 `--convert`） |
 
-> 若帖子是视频（slideshow 被当成视频），convert 会取首帧转成一张壁纸；这种情况提示用户“该链接是视频，已取首帧”。
+- 自定义根目录（不用默认「壁纸」）：第 2 个参数传路径，如 `"D:/壁纸"`。
+- `--4k` 是**插值放大**，仅尺寸到 4K、细节不增。注意很多源图本就是真 4K/8K，**直接默认下载原图即可，无需升采样**。
+- 历史参数 `--no-convert` 保留为兼容 no-op（现在默认就是不转码）。
+- `batch_download.py` 同样支持透传 `--convert` / `--4k`，默认仍是原图直出。
+- 若下载到 `.image` / `.heic` / `.avif` 等私有格式，默认模式会提示「普通看图软件可能打不开」，此时加 `--convert` 转通用 JPG。
+
+完成后用 `present_files` 把 `壁纸/<博主>/<时间戳_帖子ID>/` 展示给用户。
+
+> 若帖子是真视频（非图文幻灯片），默认原图模式会保留 `.mp4` 等视频文件并照常编号；只有在 `--convert` 模式下才会取首帧转成一张 JPG 壁纸。遇到这种情况提示用户「该链接是视频」。
 
 ### 入口 B：用户给了本地 `.image` 文件
 
@@ -89,7 +102,7 @@ python3 "<skill_dir>/scripts/analyze_tiktok_profile.py" "<tiktok_url>" [--metric
   - `<博主>_analysis.json`
 - 这两份清单就是第 2 步批量下载的输入。
 
-**第 2 步 · 按用户挑选批量下载转壁纸**
+**第 2 步 · 按用户挑选批量下载（默认原图直出）**
 
 把第 1 步的 CSV 交给 `batch_download.py`，按排名区间或序号挑选：
 
@@ -103,7 +116,7 @@ python3 "<skill_dir>/scripts/batch_download.py" "<url1>" "<url2>" ... [--base-di
 ```
 
 - `--base-dir` 自定义归档根目录（默认「壁纸」）；`--4k` 透传给 `download_tiktok.py`（长边升采样到 3840）。
-- 每条链接都会复用入口 A 的 `download_tiktok.py`：下载 → 转壁纸 → 按原顺序编号 `1_wallpaper.jpg、2_wallpaper.jpg…`，各自归档到 `壁纸/<博主>/<时间戳_帖子ID>/`。
+- 每条链接都会复用入口 A 的 `download_tiktok.py`：下载 → **原图直出（默认零转码）** → 按原顺序编号 `1_wallpaper.<原格式>、2_wallpaper.<原格式>…`，各自归档到 `壁纸/<博主>/<时间戳_帖子ID>/`。需要转码时给 `batch_download.py` 加 `--convert` 或 `--4k` 即可透传。
 - **去重**：`batch_download.py` 默认开启跳过已下载（`--skip-existing`）——下载前扫描 `壁纸/<博主>/` 下已有文件夹（文件名/文件夹名里的帖子ID，以及 `<博主>/.downloaded.json` 清单），命中即跳过，绝不重复下载。用 `--force` 可强制重下。
 
 > 为什么不走 gallery-dl 枚举：经实测，`gallery-dl .../@USER/posts` 调用 `creator/item_list`，对 `vexaro.4k` 这类账号只能翻到第一页（只返回最新一条），无法全量枚举。yt-dlp 走 `tiktokuser:<secUid>` 另一条接口，能稳定取到全部作品及点赞/播放等指标。下载环节（真正取图）仍用 gallery-dl，它对 `/photo/` 图文帖支持更好。
