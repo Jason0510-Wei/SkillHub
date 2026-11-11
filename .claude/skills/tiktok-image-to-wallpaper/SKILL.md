@@ -3,7 +3,7 @@ name: tiktok-image-to-wallpaper
 description: >-
   把 TikTok 的图片下载成手机壁纸。三种入口：① 用户直接丢来 TikTok 链接 —— 用 gallery-dl 下载帖子里的图片，**默认原图直出、零转码**，按 `1_A/1_B、2_A/2_B` 成对编号归档（A=桌面展示图，B=同一张壁纸的原图）；转码（宽度≤1080 JPEG / --4k 升采样）降级为显式参数，默认不启用；② 用户给本地 .image 文件（TikTok 私有 VVC/HEIF 格式，普通软件打不开）—— 用 ffmpeg vvc 解码器转成 JPG；③「博主作品分析 + 批量下载」—— 任意能定位到博主的 TikTok 链接（帖子/@主页/短链），先用 yt-dlp 枚举全部作品并按「受欢迎程度（点赞/播放/评论）」降序出排行榜，用户圈定后再用 batch_download.py 批量下载（自带去重）。触发词：tiktok 链接转壁纸、tiktok 图片打不开、转成手机壁纸、TikTok image 转 jpg、.image 文件、分析这个博主的作品、把博主所有作品按热度排个序、批量下载博主壁纸。下载依赖 gallery-dl（首选，自动解 TikTok JS 挑战、支持 /photo/ 图文帖）/ yt-dlp（兜底，兼枚举全量作品）；分析依赖 yt-dlp；转码/本地 .image 解码才需要 ffmpeg vvc 解码器。归档按 壁纸/<博主>/<帖子ID>-<年月日YYYYMMDD>/ 每个帖子独立文件夹。
 agent_created: true
-version: 1.9.0
+version: 1.10.0
 display_name: "TikTok图片转手机壁纸"
 display_name_en: "TikTok Image to Phone Wallpaper"
 description_zh: "从 TikTok 链接下载图片或读取本地 .image，转换为手机壁纸 JPEG。"
@@ -63,11 +63,17 @@ python3 "<skill_dir>/scripts/download_tiktok.py" "<tiktok_url>"
 | 命令 | 行为 |
 |------|------|
 | `download_tiktok.py <url>` | **默认**：原图直出 + `1_A/1_B` 成对编号，零转码 |
+| `download_tiktok.py <url> --base-dir "D:/test/壁纸"` | 指定输出根目录（v1.10.0，也支持 `--base-dir=路径`） |
 | `download_tiktok.py <url> --legacy-naming` | 回到旧命名 `1_wallpaper.<ext>, 2_wallpaper.<ext> …`（兼容老脚本） |
 | `download_tiktok.py <url> <base_dir> --convert` | 转码成宽度 ≤1080 的 JPEG（`-q:v 3`），原始下载件移入 `.originals/` 留档，成品统一 `_wallpaper.jpg` |
 | `download_tiktok.py <url> <base_dir> --4k` | 转码时长边升采样到 3840（`--4k` 会隐含启用 `--convert`） |
 
-- 自定义根目录（不用默认「壁纸」）：第 2 个参数传路径，如 `"D:/壁纸"`。
+- 自定义根目录（不用默认「壁纸」）：两种写法等价 —— 第 2 个位置参数 `"D:/壁纸"`，
+  或 `--base-dir "D:/壁纸"` / `--base-dir=D:/壁纸`。同时给时以 `--base-dir` 为准。
+  `batch_download.py` 内部仍用位置参数传递，行为不变。
+- **参数解析（v1.10.0）**：未知 `--xxx` 参数直接报错退出（退出码 2），不再被吞成输出目录。
+  旧版会把 `--base-dir` 当成目录名，真的建出一个叫 `--base-dir` 的文件夹；
+  `--base-dir` 后面缺路径值也会明确报错。
 - `--4k` 是**插值放大**，仅尺寸到 4K、细节不增。注意很多源图本就是真 4K/8K，**直接默认下载原图即可，无需升采样**。
 - 历史参数 `--no-convert` 保留为兼容 no-op（现在默认就是不转码）。
 - `batch_download.py` 同样支持透传 `--convert` / `--4k` / `--legacy-naming`，默认仍是原图直出 + A/B 命名。
@@ -97,7 +103,9 @@ TikTok 壁纸帖的图片天然是「一张展示图 + 一张原图」交替出�
 ```
 
 下游 `wechat-tietu-draft` 会按 `组号 + A/B` 自然排序挑图（也兼容旧命名），
-因此不需要额外配置就能直接用。若某帖图片数为奇数，最后一张只有 A、没有对应 B，属正常现象。
+因此不需要额外配置就能直接用。目录里的 `cover.*` 会被下游 v1.3.0 **自动忽略**，
+不会混进贴图正文图，不需要手工移走。
+若某帖图片数为奇数，最后一张只有 A、没有对应 B，属正常现象。
 
 ### 入口 B：用户给了本地 `.image` 文件
 
@@ -160,9 +168,10 @@ python3 "<skill_dir>/scripts/batch_download.py" "<url1>" "<url2>" ... [--base-di
 ## 下游：发到微信公众号贴图草稿
 
 归档好的图集可以直接喂给 **`wechat-tietu-draft`** skill（用户级，`~/.workbuddy/skills/wechat-tietu-draft/`）：
-它按 `壁纸/<博主>/<帖子ID>-<YYYYMMDD>/1_A.jpg, 1_B.jpg …` 的自然序号挑图（兼容旧 `N_wallpaper` 命名），
-自动把「汤姆和杰瑞」固定封面置顶，套用用户指定标题/正文/标签，上传永久素材后建
-`article_type=newspic` 贴图草稿，**停在草稿箱由人手动发表**，不调用发表接口。
+它按 `壁纸/<博主>/<帖子ID>-<YYYYMMDD>/1_A.jpg, 1_B.jpg …` 的自然序号挑图（兼容旧 `N_wallpaper` 命名，
+自动忽略 `cover.*`），把「汤姆和杰瑞」固定封面置顶为第一张（硬约束、缺失即报错），
+弹性取图使总张数 = 1 封面 + min(素材数, 18) ≤ 19，套用用户指定标题/正文/标签，
+上传永久素材后建 `article_type=newspic` 贴图草稿，**停在草稿箱由人手动发表**，不调用发表接口。
 
 触发场景：用户说「把刚下载的壁纸发到公众号 / 做一条贴图 / 每日贴图」。
 典型命令（先空跑预检）：

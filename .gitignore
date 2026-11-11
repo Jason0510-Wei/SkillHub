@@ -36,3 +36,9 @@ desktop.ini
 .claude/skills/**/.state/
 **/__pycache__/
 *.pyc
+
+# 公众号凭证（AppID/AppSecret，严禁入库；wechat.env.example 是占位符模板，不受影响）
+wechat.env
+**/wechat.env
+*.env
+!wechat.env.example
