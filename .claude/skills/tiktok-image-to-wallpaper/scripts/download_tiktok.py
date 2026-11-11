@@ -6,7 +6,8 @@
     <base_dir>/<博主>/<帖子ID>-<年月日YYYYMMDD>/
 
 其中：
-  - <base_dir> 默认是执行目录下的「壁纸」文件夹（可用第 2 个参数覆盖）；
+  - <base_dir> 默认是执行目录下的「壁纸」文件夹（v1.10.0 起可用第 2 个位置参数
+    或 --base-dir DIR 覆盖；两种写法等价，同时给时以 --base-dir 为准）；
   - <博主>    自动从链接识别 TikTok handle（@username），识别不到时退化为 "tiktok"；
   - <帖子ID>  TikTok 作品 ID，放在最前便于按作品检索；
   - <年月日>  本条链接保存时的本地日期（YYYYMMDD 连写，v1.8.0 起，替代旧的秒级时间戳）。
@@ -29,6 +30,8 @@
   --4k 单独给出时会自动隐含启用 --convert。
 
   历史参数 --no-convert 保留为兼容 no-op（现在默认就是不转码）。
+  v1.10.0：未知 --xxx 参数会直接报错退出，不再被当成输出目录
+  （旧版把 --base-dir 当成 base_dir，会真的建出名为 "--base-dir" 的目录）。
 
 下载器优先级：
   1. gallery-dl（首选）：TikTok 提取器成熟，能处理「图文/幻灯片」帖子（/photo/ 路径），
@@ -40,8 +43,10 @@
 本机若走代理，gallery-dl/requests 会自动读取 HTTP_PROXY/HTTPS_PROXY 环境变量。
 
 用法：
-  python3 download_tiktok.py <tiktok_url> [base_dir] [--convert] [--4k]
-默认 base_dir = 当前目录下的「壁纸」；默认不转码、原图按编号直出。
+  python3 download_tiktok.py <tiktok_url> [base_dir] [--base-dir DIR] [--convert] [--4k]
+  python3 download_tiktok.py <tiktok_url> --base-dir=D:/test/壁纸
+默认 base_dir = 当前目录下的「壁纸」；默认不转码、原图按 A/B 成对编号直出。
+--base-dir 与第 2 个位置参数等价；batch_download.py 仍用位置参数传递，行为不变。
 """
 import sys
 import os
@@ -203,14 +208,25 @@ def renumber(target, legacy=False):
     return renumber_media(target, walls, legacy)
 
 
-def main():
-    args = sys.argv[1:]
+def parse_cli(argv):
+    """v1.10.0：显式解析参数，未知 --xxx 不再被吞成输出目录。
+
+    旧版循环里任何未识别的 token 都会依次赋给 url / base_dir 并被后面的覆盖，
+    写成 `<url> <路径> --base-dir` 时，base_dir 最终变成字符串 "--base-dir"，
+    于是脚本会在当前目录下建出一个名为 "--base-dir" 的文件夹（实机验证修正版 #3）。
+    """
     url = None
-    base_dir = "壁纸"
+    base_dir = None
     convert = False
     fourk = False
     legacy_naming = False
-    for a in args:
+    positional = []
+    usage = ("usage: download_tiktok.py <tiktok_url> [base_dir] "
+             "[--base-dir DIR] [--convert] [--4k] [--legacy-naming]")
+
+    i = 0
+    while i < len(argv):
+        a = argv[i]
         if a == "--convert":
             convert = True
         elif a == "--4k":
@@ -219,16 +235,49 @@ def main():
         elif a == "--legacy-naming":
             legacy_naming = True
         elif a == "--no-convert":
-            # 兼容旧参数：现在默认就是不转码，退化为 no-op
-            pass
-        elif url is None:
-            url = a
+            pass                       # 兼容旧参数：现在默认就是不转码
+        elif a == "--base-dir":
+            if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+                print("ERROR: --base-dir 后面必须跟一个目录路径")
+                print(usage)
+                sys.exit(2)
+            base_dir = argv[i + 1]
+            i += 2
+            continue
+        elif a.startswith("--base-dir="):
+            base_dir = a.split("=", 1)[1]
+            if not base_dir:
+                print("ERROR: --base-dir= 不能为空")
+                print(usage)
+                sys.exit(2)
+        elif a.startswith("--"):
+            print("ERROR: 未知参数 %s" % a)
+            print(usage)
+            sys.exit(2)
         else:
-            base_dir = a
+            positional.append(a)
+        i += 1
 
-    if not url:
-        print("usage: download_tiktok.py <tiktok_url> [base_dir] [--convert] [--4k]")
+    if positional:
+        url = positional[0]
+    if len(positional) >= 2 and base_dir is None:
+        base_dir = positional[1]
+    if len(positional) > 2:
+        print("提示：忽略多余的位置参数 %s" % ", ".join(positional[2:]))
+    if base_dir is None:
+        base_dir = "壁纸"
+    if base_dir.startswith("--"):
+        print("ERROR: 输出目录看起来是个参数名：%s" % base_dir)
+        print(usage)
         sys.exit(2)
+    if not url:
+        print(usage)
+        sys.exit(2)
+    return url, base_dir, convert, fourk, legacy_naming
+
+
+def main():
+    url, base_dir, convert, fourk, legacy_naming = parse_cli(sys.argv[1:])
 
     blogger = blogger_from_url(url)
     post_id = None

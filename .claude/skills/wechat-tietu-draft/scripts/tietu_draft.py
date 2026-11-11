@@ -27,7 +27,15 @@
   <壁纸根>/<博主>/<帖子ID>-<YYYYMMDD>/1_A.<ext>, 1_B.<ext>, 2_A.<ext>, 2_B.<ext> ...
   A = 桌面展示图，B = 同一张壁纸的原图（v1.9.0 起上游按此命名）；
   旧命名 1_wallpaper.jpg, 2_wallpaper.jpg ... 也完全兼容。
+  目录里的 cover.* 是上游保留的固定封面，v1.3.0 起自动忽略，不会混进正文图。
   支持显式多图 / 指定帖子目录 / 最新下载的一组 / 随机未投过的一组。
+
+张数规则（v1.3.0，按实机验证修正版固化）：
+  总张数 = 1（固定封面） + min(该文件夹素材数, 18)，恒 ≤ 19（官方上限 20，留 1 张余量）。
+  素材数 6/16/18/24 → 总张数 7/17/19/19。--max-images 默认即 18，可省略；
+  --max-images 0（取全部）同样受 18 封顶，不会顶到 20 张。
+  首图必须是固定封面：封面文件缺失会硬失败（退出码 1），不再静默降级；
+  dry-run 与正式跑共用同一套挑图逻辑并做首图自检，不会出现两处结果不一致。
 
 用法：
   # 空跑：只看会挑哪些图、完整文案（不联网、不调接口）
@@ -90,7 +98,11 @@ DEFAULT_TAGS = "#4K高清壁纸 #iOS壁纸 #手机壁纸 #锁屏壁纸 #高清�
 
 ALLOWED_EXT = {".bmp", ".png", ".jpeg", ".jpg", ".gif"}
 MAX_BYTES = 10 * 1024 * 1024          # 官方 add_material 图片上限 10M
-MAX_IMAGES = 20                        # 官方 newspic 上限 20 张（含封面）
+MAX_IMAGES = 20                        # 官方 newspic 硬上限 20 张（含封面），仅作兜底断言
+SAFE_MAX_IMAGES = 19                   # v1.3.0：默认封顶 19 张，给官方上限留 1 张余量
+DEFAULT_MATERIAL_IMAGES = 18           # v1.3.0：素材默认弹性取最多 18 张
+COVER_PREFIX = "cover."                # 上游保留的固定封面文件，不作为正文素材
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".heic", ".avif"}
 TITLE_BYTES_DEFAULT = 128             # 放宽：用户标题含 emoji/中英混排，共 56 字节
 TITLE_CHARS_DEFAULT = 64
 TITLE_BYTES_STRICT = 32               # --strict-title 恢复早期保守口径
@@ -301,14 +313,28 @@ def natural_key(path):
 
 
 def images_in(directory):
+    """挑正文素材图。v1.3.0：cover.* 是上游保留的固定封面，必须排除。
+
+    上游 download_tiktok.py 会保留 cover.* 原名且不参与 A/B 编号；
+    旧版会把它也当素材挑走（排在最后），素材少时直接混进贴图正文图里。
+    """
     out = []
     for name in os.listdir(directory):
+        if name.lower().startswith(COVER_PREFIX):
+            continue
         p = os.path.join(directory, name)
-        if os.path.isfile(p) and os.path.splitext(name)[1].lower() in {
-            ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".heic", ".avif"
-        }:
+        if os.path.isfile(p) and os.path.splitext(name)[1].lower() in IMAGE_EXT:
             out.append(p)
     return sorted(out, key=natural_key)
+
+
+def ignored_covers(directory):
+    """返回被自动忽略的 cover.* 文件名，供日志显式交代（不再需要人工移走）。"""
+    if not directory or not os.path.isdir(directory):
+        return []
+    return sorted(n for n in os.listdir(directory)
+                  if n.lower().startswith(COVER_PREFIX)
+                  and os.path.isfile(os.path.join(directory, n)))
 
 
 def post_dirs(base_dir, author=None):
@@ -372,8 +398,39 @@ def pick_images(args, used):
         return [], key, chosen
 
     paths = images_in(chosen)
-    limit = MAX_IMAGES if args.max_images == 0 else min(args.max_images, MAX_IMAGES)
+    # v1.3.0 弹性张数：素材最多 18 张；--max-images 0（取全部）也受同一上限保护，
+    # 不会像旧版那样顶到官方 20 张。总张数在 compose_images() 加封面后再按 19 截断。
+    n = args.max_images or DEFAULT_MATERIAL_IMAGES
+    if n < 0:
+        raise WeChatError("--max-images 不能为负数（0 = 全部，但仍受 %d 张封顶）"
+                          % DEFAULT_MATERIAL_IMAGES)
+    limit = min(n, DEFAULT_MATERIAL_IMAGES, SAFE_MAX_IMAGES - 1)
     return paths[:limit], key, chosen
+
+
+def compose_images(args, used, cover):
+    """挑素材 → 去掉重复封面 → 插入固定封面 → 19 张封顶 → 首图自检。
+
+    v1.3.0：dry-run 与正式跑共用本函数，杜绝两处挑图结果不一致；
+    封面在第一张是硬约束，自检不过直接失败，不静默降级。
+    """
+    images, post_key, post_dir = pick_images(args, used)
+    if not images:                      # 已投过被跳过，或目录里确实没有素材
+        return [], post_key, post_dir
+    if cover:
+        nc = os.path.normcase(os.path.abspath(cover))
+        images = [p for p in images
+                  if os.path.normcase(os.path.abspath(p)) != nc]
+        images = [cover] + images
+    images = images[:SAFE_MAX_IMAGES]
+    if len(images) > MAX_IMAGES:
+        raise WeChatError("图片 %d 张，超过微信 newspic 的 %d 张硬上限"
+                          % (len(images), MAX_IMAGES))
+    if cover and (not images or
+                  os.path.normcase(os.path.abspath(images[0])) !=
+                  os.path.normcase(os.path.abspath(cover))):
+        raise WeChatError("首图自检失败：固定封面没有排在第一张，已中止（不会建草稿）。")
+    return images, post_key, post_dir
 
 
 def prepare_image(path, tmpdir):
@@ -477,12 +534,20 @@ def validate_meta(title, content, strict=False):
 # --------------------------------------------------------------------------- 草稿
 
 def cover_path(args):
+    """v1.3.0：封面缺失改为硬失败。
+
+    旧版只打印一行提示就静默不带封面、退出码仍是 0，首图会悄悄变成 1_A.jpg，
+    直接破坏「第 1 张必须是汤姆和杰瑞封面」的需求。
+    """
     if args.no_cover:
         return None
     p = os.path.abspath(args.cover or DEFAULT_COVER)
     if not os.path.isfile(p):
-        log("提示：封面文件不存在（%s），本次不带固定封面。用 --cover <path> 指定，或 --no-cover 关闭。" % p)
-        return None
+        raise WeChatError(
+            "固定封面文件不存在：%s\n"
+            "  首图必须是汤姆和杰瑞固定封面，已中止（不会静默降级成不带封面）。\n"
+            "  修复：把 assets/cover_tom_jerry.jpg 一起拷到新机器，或用 --cover <path> 指定；\n"
+            "  确实不要封面时显式加 --no-cover。" % p)
     return p
 
 
@@ -521,8 +586,10 @@ def build_parser():
     src.add_argument("--random-post", action="store_true", help="随机挑一组未投过的")
     src.add_argument("--base-dir", metavar="DIR", help="壁纸根目录，默认 %s" % DEFAULT_BASE_DIR)
     src.add_argument("--author", metavar="NAME", help="只在该博主目录下找，如 vexaro.4k")
-    src.add_argument("--max-images", type=int, default=9, metavar="N",
-                     help="从素材组取几张，默认 9；固定封面额外占 1 张，总数上限 20；0 = 全部")
+    src.add_argument("--max-images", type=int, default=DEFAULT_MATERIAL_IMAGES, metavar="N",
+                     help="素材最多取几张，默认 %d（弹性：实际取 min(素材数,N)）；"
+                          "固定封面额外占 1 张，总数恒 ≤ %d；0 = 全部但仍受 %d 封顶"
+                          % (DEFAULT_MATERIAL_IMAGES, SAFE_MAX_IMAGES, DEFAULT_MATERIAL_IMAGES))
 
     cov = p.add_argument_group("固定封面（用户风格）")
     cov.add_argument("--cover", metavar="PATH",
@@ -544,7 +611,7 @@ def build_parser():
     ctl.add_argument("--env", metavar="PATH", help="凭证文件路径")
     ctl.add_argument("--force", action="store_true", help="已投过的也重投")
     ctl.add_argument("--check-only", action="store_true",
-                     help="只自检凭证与 IP 白名单（取一次 token），不挑图、不建草稿")
+                     help="只自检凭证与 IP 白名单；v1.3.0 起强制联网换 token（忽略本地缓存，避免假 OK）")
     ctl.add_argument("--dry-run", action="store_true", help="只挑图 + 校验文案，不联网")
     ctl.add_argument("--refresh-token", action="store_true", help="强制刷新 access_token")
     ctl.add_argument("--update", metavar="MEDIA_ID",
@@ -571,9 +638,12 @@ def do_verify(token, media_id):
     log("正文      = %r" % a.get("content"))
     log("中文转义  = %s" % ("有 \\uXXXX（异常）" if "\\u" in (a.get("title", "") + a.get("content", ""))
                              else "无（正常）"))
-    log("图片张数  = %d" % len(imgs))
+    log("图片张数  = %d（上限 %d）" % (len(imgs), SAFE_MAX_IMAGES))
     if imgs:
-        log("首图素材  = %s..." % str(imgs[0].get("image_media_id", ""))[:20])
+        log("首图素材ID = %s...（仅 media_id，不含文件名）"
+            % str(imgs[0].get("image_media_id", ""))[:20])
+        log("注意：--verify 判断不了首图是不是汤姆和杰瑞封面；"
+            "以 --dry-run 的「首图自检 OK」和后台草稿箱肉眼确认为准。")
     log("评论      = %s / 仅粉丝 = %s" % (
         a.get("need_open_comment"), a.get("only_fans_can_comment")))
     return 0
@@ -587,13 +657,9 @@ def do_update(args, token, title, content, tbytes, cover, tmpdir):
 
     if args.rebuild_images or args.images or args.from_dir:
         used = load_used()
-        images, _, post_dir = pick_images(args, used)
+        images, _, post_dir = compose_images(args, used, cover)
         if not images:
             raise WeChatError("没有挑到任何图片，无法重建图片列表")
-        if cover:
-            images = [p for p in images
-                      if os.path.normcase(os.path.abspath(p)) != os.path.normcase(cover)]
-            images = ([cover] + images)[:MAX_IMAGES]
         log("重新上传 %d 张图（%s）" % (len(images), post_dir or "显式指定"))
         media_ids = [upload_image(token, p, tmpdir) for p in images]
     else:
@@ -602,9 +668,9 @@ def do_update(args, token, title, content, tbytes, cover, tmpdir):
             log("上传固定封面：%s" % os.path.basename(cover))
             cid = upload_image(token, cover, tmpdir)
             if args.cover_insert:
-                media_ids = ([cid] + media_ids)[:MAX_IMAGES]
+                media_ids = ([cid] + media_ids)[:SAFE_MAX_IMAGES]
             else:
-                media_ids = ([cid] + media_ids[1:])[:MAX_IMAGES]
+                media_ids = ([cid] + media_ids[1:])[:SAFE_MAX_IMAGES]
                 log("已用固定封面替换原第一张图（其余 %d 张复用，不重复上传）" % (len(media_ids) - 1))
     if not media_ids:
         raise WeChatError("草稿图片列表为空")
@@ -625,9 +691,12 @@ def main(argv=None):
 
     if args.check_only:
         appid, secret, cred_from = load_credentials(args)
-        token = get_token(appid, secret, force=args.refresh_token)
         log("凭证来源：%s" % cred_from)
-        log("[OK] access_token 获取成功（len=%d，已缓存，未回显）" % len(token))
+        # v1.3.0：自检必须真的联网。旧版命中本地 token 缓存就直接返回「假 OK」，
+        # 换机器后 IP 白名单根本没被验证到（实机验证修正版 #4）。
+        log("[自检] 强制联网重新获取 access_token（忽略本地缓存）...")
+        token = get_token(appid, secret, force=True)
+        log("[OK] access_token 获取成功（len=%d，已写入缓存，未回显）" % len(token))
         log("     凭证与 IP 白名单均正常。去掉 --check-only 即可正式建贴图草稿。")
         return 0
 
@@ -646,15 +715,23 @@ def main(argv=None):
 
     if args.dry_run and not args.update:
         used = load_used()
-        images, _, post_dir = pick_images(args, used)
-        if cover:
-            images = [p for p in images
-                      if os.path.normcase(os.path.abspath(p)) != os.path.normcase(cover)]
-            images = ([cover] + images)[:MAX_IMAGES]
+        images, post_key, post_dir = compose_images(args, used, cover)
+        if not images and post_key in used:
+            log("跳过：这组图已经投过草稿了（加 --force 可重投）")
+            return 0
+        if not images:
+            raise WeChatError("没有挑到任何图片")
+        skipped = ignored_covers(post_dir) if post_dir else []
         log("素材组：%s" % (post_dir or "显式指定图片"))
+        if skipped:
+            log("已自动忽略固定封面文件：%s（不必手工移走）" % ", ".join(skipped))
         log("图片 %d 张：%s" % (len(images), ", ".join(os.path.basename(p) for p in images[:6]) +
                               (" ..." if len(images) > 6 else "")))
         log("首图（封面）：%s" % (os.path.basename(cover) if cover else "（未启用固定封面）"))
+        log("图片列表第一项：%s" % os.path.basename(images[0]))
+        log("首图自检：%s" % ("[OK] 固定封面在第一张" if cover else "（本次 --no-cover，无封面要求）"))
+        log("张数自检：[OK] %d 张 ≤ %d 张安全上限（官方硬上限 %d）"
+            % (len(images), SAFE_MAX_IMAGES, MAX_IMAGES))
         log("标题：%s（%d 字节 / %d 字符）" % (title, tbytes, len(title)))
         log("正文：\n%s" % content)
         log("\n[dry-run] 预检通过，未联网、未上传、未建草稿。去掉 --dry-run 即正式执行。")
@@ -669,22 +746,20 @@ def main(argv=None):
             return do_update(args, token, title, content, tbytes, cover, tmpdir)
 
         used = load_used()
-        images, post_key, post_dir = pick_images(args, used)
+        images, post_key, post_dir = compose_images(args, used, cover)
         if not images and post_key in used:
             return 2
         if not images:
             raise WeChatError("没有挑到任何图片")
-        if cover:
-            images = [p for p in images
-                      if os.path.normcase(os.path.abspath(p)) != os.path.normcase(cover)]
-            images = [cover] + images
-        if len(images) > MAX_IMAGES:
-            images = images[:MAX_IMAGES]
 
+        skipped = ignored_covers(post_dir) if post_dir else []
         log("素材组：%s" % (post_dir or "显式指定图片"))
-        log("图片 %d 张（首图为固定封面）：%s" % (
-            len(images), ", ".join(os.path.basename(p) for p in images[:5]) +
-            (" ..." if len(images) > 5 else "")))
+        if skipped:
+            log("已自动忽略固定封面文件：%s" % ", ".join(skipped))
+        log("图片 %d 张（首图为固定封面，≤%d 张安全上限）：%s" % (
+            len(images), SAFE_MAX_IMAGES,
+            ", ".join(os.path.basename(p) for p in images[:6]) +
+            (" ..." if len(images) > 6 else "")))
         log("标题：%s（%d 字节）" % (title, tbytes))
         log("正文：%d 字符" % len(content))
 
