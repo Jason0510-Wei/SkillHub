@@ -12,8 +12,9 @@
   3. 从含 url 列的 CSV 读取全部：
        python3 batch_download.py --from <file.csv> [--base-dir DIR] [--4k]
 
-每条链接都会调用同目录下的 download_tiktok.py 完成「下载 + 按序编号」。
-默认「原图直出」：不转码、保留原始分辨率与格式，直接按 1..N 编号。
+每条链接都会调用同目录下的 download_tiktok.py 完成「下载 + A/B 成对编号」。
+默认「原图直出」：不转码、保留原始分辨率与格式，按 1_A/1_B、2_A/2_B … 成对编号
+（A = 桌面展示图，B = 同一张壁纸的原图；--legacy-naming 可回到旧 1_wallpaper 命名）。
 只有显式加 --convert 才走旧转码流程（宽度≤1080 JPG，原图移入 .originals/）；
 --4k 为转码升采样模式（会隐含启用转码）。两者默认都不配置。
 
@@ -25,9 +26,10 @@
   命中则跳过，避免重复下载。用 --force 可强制重下。
 
 用法：
-  python3 batch_download.py <urls...> [--base-dir DIR] [--convert] [--4k] [--force]
+  python3 batch_download.py <urls...> [--base-dir DIR] [--convert] [--4k] [--legacy-naming] [--force]
   python3 batch_download.py --from <csv> [--top N | --pick a,b,c] [--base-dir DIR] [--convert] [--4k] [--force]
-默认：原图直出（不转码）；--convert 显式启用转码；--4k 转码升采样到 3840。
+默认：原图直出（不转码）+ 1_A/1_B 成对编号；--convert 显式启用转码；--4k 转码升采样到 3840；
+--legacy-naming 透传给 download_tiktok.py，回到旧 1_wallpaper.<ext> 命名。
 """
 import sys
 import os
@@ -169,6 +171,7 @@ def main():
     base_dir = "壁纸"
     fourk = False
     convert = False
+    legacy_naming = False
     from_csv = None
     top = 0
     pick = None
@@ -189,6 +192,8 @@ def main():
             fourk = True; i += 1; continue
         if a == "--convert":
             convert = True; i += 1; continue
+        if a == "--legacy-naming":
+            legacy_naming = True; i += 1; continue
         if a == "--force":
             skip_existing = False; i += 1; continue
         if a == "--no-skip":
@@ -232,6 +237,8 @@ def main():
             cmd.append("--convert")
         if fourk:
             cmd.append("--4k")
+        if legacy_naming:
+            cmd.append("--legacy-naming")
         r = subprocess.run(cmd)
         if r.returncode == 0:
             ok += 1
