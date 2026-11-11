@@ -3,19 +3,24 @@
 """
 从 TikTok 链接下载图片/视频，按下面的目录结构落盘：
 
-    <base_dir>/<博主>/<时间戳YYYYMMDD_HHMMSS>_<帖子ID>/
+    <base_dir>/<博主>/<帖子ID>-<年月日YYYYMMDD>/
 
 其中：
   - <base_dir> 默认是执行目录下的「壁纸」文件夹（可用第 2 个参数覆盖）；
   - <博主>    自动从链接识别 TikTok handle（@username），识别不到时退化为 "tiktok"；
-  - <时间戳>  本条链接保存时的本地时间（秒级），后缀帖子ID 保证每个帖子独立文件夹。
+  - <帖子ID>  TikTok 作品 ID，放在最前便于按作品检索；
+  - <年月日>  本条链接保存时的本地日期（YYYYMMDD 连写，v1.8.0 起，替代旧的秒级时间戳）。
 
-【默认行为：原图直出，零转码】
+【默认行为：原图直出，零转码 + A/B 成对命名（v1.9.0 起）】
   下载到的原始媒体文件不经过任何重编码，直接按 TikTok 幻灯片原始顺序
-  （gallery-dl 文件名里的 _NN 序号）重命名为
-  1_wallpaper.<原扩展名>、2_wallpaper.<原扩展名>、3_wallpaper.<原扩展名> …
+  （gallery-dl 文件名里的 _NN 序号）两两成对重命名为
+     1_A.<ext>  1_B.<ext>  2_A.<ext>  2_B.<ext> …
+  同一对 A/B 是同一张壁纸：A = 桌面展示图（手机锁屏效果），B = 壁纸原图。
+  奇数位为 A、偶数位为 B；第 i 张对应第 (i+1)//2 组。
   保留原始分辨率与原始编码，无二次 JPEG 压缩，也不再产生 .originals/ 子目录。
   （实测：源图常有 1536px 甚至 5736×8192，旧的默认封顶 1080 会损失大量细节。）
+  加 --legacy-naming 可回到旧命名 1_wallpaper.<ext>, 2_wallpaper.<ext> …
+  目录里的 cover.*（固定封面图）不参与编号，保持原文件名。
 
 【可选：显式转码】
   只有显式加 --convert 才走旧的转码流程（convert_tiktok_image.py）：
@@ -152,13 +157,28 @@ def slide_index(fname):
     return 0
 
 
-def renumber_media(target, files):
-    """把 files 按原幻灯片顺序重命名为 1_wallpaper.<原扩展名>、2_ ...。
+def pair_name(i, ext):
+    """第 i 张（1-based）→ A/B 成对文件名。
+
+    TikTok 壁纸帖的原始顺序是「展示图, 原图」成对出现：
+      1 -> 1_A（桌面展示图）  2 -> 1_B（同一张壁纸的原图）
+      3 -> 2_A                4 -> 2_B ...
+    """
+    return "%d_%s%s" % ((i - 1) // 2 + 1, "A" if i % 2 else "B", ext)
+
+
+NUMBERED_RE = re.compile(r'^\d+_(?:wallpaper|[ABab])\.', re.I)
+
+
+def renumber_media(target, files, legacy=False):
+    """按原幻灯片顺序重命名：默认 1_A/1_B、2_A/2_B…；legacy=True 时用 1_wallpaper…
 
     保留每个文件的原始扩展名（默认原图模式下不转码，扩展名各异）。
-    两阶段重命名，避免同目录内互相覆盖。
+    cover.* 视为固定封面图，不参与编号。两阶段重命名，避免同目录内互相覆盖。
     """
-    files = [f for f in files if os.path.isfile(os.path.join(target, f))]
+    files = [f for f in files
+             if os.path.isfile(os.path.join(target, f))
+             and not f.lower().startswith("cover.")]
     if not files:
         return 0
     files.sort(key=slide_index)
@@ -168,18 +188,19 @@ def renumber_media(target, files):
         src = os.path.join(target, f)
         tmp = os.path.join(target, f".rk{i:04d}{ext}")
         os.rename(src, tmp)
-        tmp_map.append((tmp, os.path.join(target, f"{i}_wallpaper{ext}")))
+        name = ("%d_wallpaper%s" % (i, ext)) if legacy else pair_name(i, ext)
+        tmp_map.append((tmp, os.path.join(target, name)))
     for tmp, final in tmp_map:
         os.rename(tmp, final)
     return len(files)
 
 
-def renumber(target):
-    """兼容旧调用：对目录下已生成的 *_wallpaper.jpg 编号。"""
+def renumber(target, legacy=False):
+    """兼容旧调用：对目录下已编号的文件重新按 A/B 成对编号。"""
     walls = [f for f in os.listdir(target)
-             if f.endswith("_wallpaper.jpg")
+             if NUMBERED_RE.match(f)
              and os.path.isfile(os.path.join(target, f))]
-    return renumber_media(target, walls)
+    return renumber_media(target, walls, legacy)
 
 
 def main():
@@ -188,12 +209,15 @@ def main():
     base_dir = "壁纸"
     convert = False
     fourk = False
+    legacy_naming = False
     for a in args:
         if a == "--convert":
             convert = True
         elif a == "--4k":
             fourk = True
             convert = True            # 4K 属于转码模式，隐含启用
+        elif a == "--legacy-naming":
+            legacy_naming = True
         elif a == "--no-convert":
             # 兼容旧参数：现在默认就是不转码，退化为 no-op
             pass
@@ -228,11 +252,12 @@ def main():
     if not blogger:
         blogger = "tiktok"
 
-    # 每个帖子一个独立文件夹：时间戳(秒级) + post id，避免同分钟内多次下载互相覆盖/合并
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    folder_name = f"{ts}_{post_id}" if post_id else ts
+    # 每个帖子一个独立文件夹：<帖子ID>-<年月日YYYYMMDD>（v1.8.0 起）
+    # 帖子ID 放最前，日期只到天；同一帖子同日重复下载时追加 _1/_2，避免合并
+    day = datetime.datetime.now().strftime("%Y%m%d")
+    folder_name = f"{post_id}-{day}" if post_id else day
     target = os.path.join(base_dir, blogger, folder_name)
-    if os.path.exists(target):           # 极端同秒碰撞时追加序号
+    if os.path.exists(target):           # 同帖子同日重复时追加序号
         k = 1
         while os.path.exists(f"{target}_{k}"):
             k += 1
@@ -256,10 +281,15 @@ def main():
         raw = [f for f in os.listdir(target)
                if os.path.isfile(os.path.join(target, f))
                and os.path.splitext(f)[1].lower() in MEDIA_EXT
-               and not re.match(r'^\d+_wallpaper\.', f)]
-        n = renumber_media(target, raw)
+               and not NUMBERED_RE.match(f)
+               and not f.lower().startswith("cover.")]
+        n = renumber_media(target, raw, legacy_naming)
         if n:
-            print(f"RENAMED {n} -> 原图按原顺序编号为 1..{n}_wallpaper.<原格式>（未转码，保留原始分辨率）")
+            if legacy_naming:
+                print(f"RENAMED {n} -> 1..{n}_wallpaper.<原格式>（旧命名，未转码）")
+            else:
+                print(f"RENAMED {n} -> 1_A/1_B, 2_A/2_B ... 共 {n} 张"
+                      f"（A=桌面展示图，B=壁纸原图；未转码，保留原始分辨率）")
         odd = [f for f in raw if os.path.splitext(f)[1].lower() in UNUSUAL_EXT]
         if odd:
             print(f"提示: {len(odd)} 个文件是私有/新格式（.image/.heic/.avif 等），"
@@ -282,7 +312,7 @@ def main():
         ext = os.path.splitext(f)[1].lower()
         if ext not in MEDIA_EXT:
             continue
-        if f.endswith("_wallpaper.jpg"):   # 已是成品，跳过
+        if NUMBERED_RE.match(f):   # 已编号的成品，跳过
             continue
         out = os.path.join(target, os.path.splitext(f)[0] + "_wallpaper.jpg")
         conv_argv = [sys.executable, conv, fp, out]
@@ -303,9 +333,10 @@ def main():
     print(f"CONVERTED {ok_conv} -> 壁纸已存于 {target}" + (" [4K]" if fourk else "") +
           ("（原始下载件已移入 .originals/）" if ok_conv else ""))
 
-    n = renumber(target)
+    n = renumber(target, legacy_naming)
     if n:
-        print(f"RENAMED {n} -> 已按原顺序编号为 1..{n}_wallpaper.jpg")
+        mode = "1..%d_wallpaper.jpg（旧命名）" % n if legacy_naming else "1_A/1_B, 2_A/2_B ...（A=展示图 B=原图）"
+        print(f"RENAMED {n} -> 已按原顺序编号为 {mode}")
 
 
 if __name__ == '__main__':
