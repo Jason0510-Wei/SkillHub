@@ -31,3 +31,8 @@ desktop.ini
 
 # 压缩包（Skill 源码包，解压后可删除）
 *.zip
+
+# Skill 运行期状态（含 access_token 缓存与已投记录，严禁入库）
+.claude/skills/**/.state/
+**/__pycache__/
+*.pyc
