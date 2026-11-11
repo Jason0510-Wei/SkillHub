@@ -14,6 +14,7 @@
 | 🎨 **xhs-poster** | 小红书 6 图套图生成器（文案 + AI 配图） | 说"做一套小红书图文" |
 | 🖼️ **hy-image-generation** | 腾讯云混元生图 3.0，文生图 / 图生图 | 说"用混元画一只猫" |
 | 📱 **tiktok-image-to-wallpaper** | TikTok `.image`（VVC/HEIF 私有格式）→ 手机壁纸 JPEG；也支持**直接丢 TikTok 链接**，自动下载图片再转 | 丢 `.image` 或 TikTok 链接，说"转成手机壁纸" |
+| 🗂️ **wallpaper-batch-splitter** | 把一批编号文件夹按「每组 8 张壁纸 + 1 张固定配图」重新分组，多出来的自动新建文件夹往下排号（带备份 / dry-run / 回滚） | 说"每个文件夹只放八张壁纸"或"多出来的往下排号" |
 
 whitepaper / hotspot / review / xhs-poster 四个 Skill 共享一份**账号画像**配置，改一次全部生效。
 
@@ -98,6 +99,7 @@ claude
 - `复盘 输入/xxx.xlsx` → 触发 review
 - `做一套小红书图文` → 触发 xhs-poster
 - `用混元画一只猫` → 触发 hy-image-generation
+- `每个文件夹只放八张壁纸，多出来的往下排号` → 触发 wallpaper-batch-splitter
 
 ## 📁 目录结构
 
@@ -109,7 +111,9 @@ self-media-toolkit/
 │   ├── hotspot/             # 热点抓取
 │   ├── review/              # 数据复盘
 │   ├── xhs-poster/          # 小红书套图
-│   └── hy-image-generation/ # 腾讯云混元生图
+│   ├── hy-image-generation/ # 腾讯云混元生图
+│   ├── tiktok-image-to-wallpaper/ # TikTok 链接 → 壁纸
+│   └── wallpaper-batch-splitter/  # 壁纸 8+1 分组 + 自动编号
 ├── 配置/
 │   └── 账号画像.md          # ⭐ 先填这个
 ├── 输入/                    # 放 PDF、数据表（本地，不上传）
