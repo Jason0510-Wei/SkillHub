@@ -14,7 +14,7 @@
   也不做 Cookie / Playwright / 后台逆向。最后一步由人在草稿箱或订阅号助手手动点发表。
 
 用户固定风格（2026-11-11 确认，v1.2.0 起为默认值，全部可用命令行覆盖）：
-  · 首图固定为「汤姆和杰瑞」封面：assets/cover_tom_jerry.png
+  · 首图固定为「汤姆和杰瑞」封面：assets/封面.png（兼容旧名 cover_tom_jerry.png）
   · 标题：【分享】TikTok爆火🔥iOS 4K高清锁屏壁纸📱
   · 正文：喜欢这组壁纸的话，留个关注❤️
           后续持续更新更多TikTok热门🔥高清壁纸！
@@ -87,8 +87,20 @@ STATE_DIR = os.path.join(SKILL_DIR, ".state")
 TOKEN_CACHE = os.path.join(STATE_DIR, "token_cache.json")
 USED_DB = os.path.join(STATE_DIR, "used_posts.json")
 DEFAULT_BASE_DIR = os.environ.get("WECHAT_TIETU_WALLPAPER_DIR", r"E:\图片\壁纸")
-DEFAULT_COVER = os.environ.get(
-    "WECHAT_TIETU_COVER", os.path.join(SKILL_DIR, "assets", "cover_tom_jerry.png"))
+# 用户 2026-11-13 22:33 指定 assets/封面.png 为唯一权威文件名；
+# 仍兼容旧 clone / 旧机器上同内容的 cover_tom_jerry.png。
+COVER_FILENAMES = ("封面.png", "cover_tom_jerry.png")
+
+
+def _default_cover():
+    for name in COVER_FILENAMES:
+        p = os.path.join(SKILL_DIR, "assets", name)
+        if os.path.isfile(p):
+            return p
+    return os.path.join(SKILL_DIR, "assets", COVER_FILENAMES[0])
+
+
+DEFAULT_COVER = os.environ.get("WECHAT_TIETU_COVER", _default_cover())
 
 # ---- 用户固定风格（可用 --title / --content / --tags / --meta / --cover 覆盖）----
 DEFAULT_TITLE = "【分享】TikTok爆火🔥iOS 4K高清锁屏壁纸📱"
@@ -546,7 +558,7 @@ def cover_path(args):
         raise WeChatError(
             "固定封面文件不存在：%s\n"
             "  首图必须是汤姆和杰瑞固定封面，已中止（不会静默降级成不带封面）。\n"
-            "  修复：把 assets/cover_tom_jerry.png 一起拷到新机器，或用 --cover <path> 指定；\n"
+            "  修复：把 assets/封面.png 一起拷到新机器，或用 --cover <path> 指定；\n"
             "  确实不要封面时显式加 --no-cover。" % p)
     return p
 

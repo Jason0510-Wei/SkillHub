@@ -126,7 +126,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="A/B 成对壁纸 → 8+1 发布组（复制式，不动素材库）")
     ap.add_argument("--source", required=True, help="素材库博主目录，如 E:/图片/壁纸/clear__display")
     ap.add_argument("--out", required=True, help="发布批次根目录，如 E:/图片/发布批次/20261111-clear__display")
-    ap.add_argument("--cover", required=True, help="固定封面母版（汤姆和杰瑞），如 .../assets/cover_tom_jerry.png")
+    ap.add_argument("--cover", required=True, help="固定封面母版（汤姆和杰瑞），如 .../assets/封面.png")
     ap.add_argument("--pairs-per-group", type=int, default=4, help="每组几对 A/B，默认 4 对 = 8 张")
     ap.add_argument("--allow-partial", action="store_true", help="余数不足一组时也生成残组（默认留到下次）")
     ap.add_argument("--order-file", help="榜单 CSV（如 selected.csv）：按其中 id 顺序排帖子，热门优先")

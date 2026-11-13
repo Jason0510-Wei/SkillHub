@@ -10,7 +10,7 @@ description: >-
   触发词：整合 skill、壁纸流水线、下载博主点赞过万的图、8+1 分组后发公众号、每天发 4 组贴图、
   日更壁纸草稿、wallpaper pipeline。
 agent_created: true
-version: 1.0.0
+version: 1.0.1
 display_name: "壁纸日更流水线"
 display_name_en: "Wallpaper Daily Pipeline"
 description_zh: "串联下载、8+1 分组与公众号贴图草稿的编排层，下载/发帖 skill 保持独立。"
@@ -40,7 +40,7 @@ visibility: "user"
 | 项 | 规则 |
 |---|---|
 | 一组的内容 | **4 对 A/B = 8 张壁纸**：`1_A/1_B, 2_A/2_B, 3_A/3_B, 4_A/4_B`。A=桌面展示图，B=同款壁纸原图，成对不拆散 |
-| 「+1」 | 每组放一张 `cover.png`，**就是汤姆和杰瑞固定封面**（`wechat-tietu-draft/assets/cover_tom_jerry.png`） |
+| 「+1」 | 每组放一张 `cover.png`，**就是汤姆和杰瑞固定封面**（`wechat-tietu-draft/assets/封面.png`） |
 | 首图 | **必须是汤姆和杰瑞封面，排在第一张** —— 编排层 md5 校验 + 下游 `--dry-run` 首图自检 + 下游 `cover_path()` 硬失败，三重保障 |
 | 去重语义 | 下游 `images_in()` 自动忽略 `cover.*` 并把同一张图插到首位 → 每条草稿恰好 1 封面 + 8 素材 = **9 张**，不会出现两张封面 |
 | 每次投递 | 默认 `--per-day 4`，即 4 组 → 4 条草稿；发表仍人工 |
@@ -48,16 +48,18 @@ visibility: "user"
 
 ### 唯一封面硬约束（2026-11-13 用户最终裁定，不可替换）
 
-所有批次、所有草稿的首图**一律只用** `wechat-tietu-draft/assets/cover_tom_jerry.png`
+所有批次、所有草稿的首图**一律只用** `wechat-tietu-draft/assets/封面.png`
 （权威来源 `E:\图片\壁纸\vexaro.4k\20261108_110501_7694083696076295445\cover.png` 的字节级副本，
 941×1671 RGBA PNG，3,667,249 字节）。
+**文件名以用户 2026-11-13 22:33 指定的 `封面.png` 为准**，旧名 `cover_tom_jerry.png` 已退役；
+脚本与编排层优先读新名、回退旧名，两个名字若同时存在必须字节级一致。
 
 - SHA-256：`ed31ea7dc4ce144999a61e10371a397c4b5079e992a2a116d6c751501b72481a`
 - 视觉特征：仰视蓝天白云，左侧汤姆与右侧杰瑞低头俯看镜头嬉笑；
   **四角绿叶 + 左下白色前爪 + 白字 `Photo 4k wallpaper iOS 27` / `>>>>>>>` + 右下「AI生成」水印**。
   **「有没有字母/文字」是最快判断标志 —— 有字才对**
 - 2026-11-13 用户**推翻 11-12 的「无树木、无文字」版**：那张是原版壁纸，不是封面
-- 换机器或更新 skill 后先核对再用：`sha256sum <skills>/wechat-tietu-draft/assets/cover_tom_jerry.png`
+- 换机器或更新 skill 后先核对再用：`sha256sum <skills>/wechat-tietu-draft/assets/封面.png`
 - **禁止**替换为任何归档旧版；不得裁剪、重新生成
 - 已废弃：`_archive/cover_tom_jerry_NO_TEXT_2026-11-12_DEPRECATED.png`（无字版）、
   `_archive/cover_tom_jerry_v1_1080x1918.jpg`（带字但无树木）、
@@ -188,7 +190,7 @@ python "<pipe>" all --url "https://www.tiktok.com/@clear__display/photo/77067548
 | `download` 0 文件 | 多为 TikTok 反爬；清单里的 URL 应已是 `/photo/` 形式，仍失败就手动 `python -m gallery_dl -d out --cookies-from-browser chrome "<url>"` 诊断 |
 | `40164` | 出口 IP 不在白名单；`--check-only` 会打印当前 IP，加到公众号「开发密钥 → API IP 白名单」后重跑 |
 | 组数不够 4 组 | 素材不足 4 对 × 4 组；回到 ①~④ 补素材。`--allow-partial` 生成的残组会被 `draft` 的「每组必须 8 张」校验拦下，仅供手工处理，不要直接投 |
-| 首图不是汤姆和杰瑞 | 编排层 md5 校验与下游硬失败都会拦下；先检查 `assets/cover_tom_jerry.png` 是否被换过 |
+| 首图不是汤姆和杰瑞 | 编排层 md5 校验与下游硬失败都会拦下；先检查 `assets/封面.png` 是否被换过 |
 | 想换分组粒度 | `batch` 与 `draft` 同时给同一个 `--pairs-per-group`（如 8 对 = 16 张，加封面 17 张，仍在 19 张安全上限内） |
 
 ## 给用户的简短说明

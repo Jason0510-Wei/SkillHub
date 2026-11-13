@@ -82,8 +82,11 @@ def cover_path(args) -> Path:
     if args.cover:
         p = Path(args.cover).expanduser().resolve()
     else:
-        p = (Path(args.skills_root) / "wechat-tietu-draft" / "assets" /
-             "cover_tom_jerry.png")
+        assets = Path(args.skills_root) / "wechat-tietu-draft" / "assets"
+        # 用户 2026-11-13 22:33 指定 封面.png 为唯一权威文件名；兼容旧 clone 的旧名
+        names = ("封面.png", "cover_tom_jerry.png")
+        p = next((assets / n for n in names if (assets / n).is_file()),
+                 assets / names[0])
     if not p.is_file():
         die("汤姆和杰瑞固定封面不存在：%s（首图硬性要求，不能缺）" % p)
     return p
@@ -407,7 +410,7 @@ def build_parser():
                         help="素材库根目录，默认 %s" % DEFAULT_WALLPAPER_DIR)
     common.add_argument("--batch-root", default=DEFAULT_BATCH_ROOT,
                         help="发布批次根目录，默认 %s" % DEFAULT_BATCH_ROOT)
-    common.add_argument("--cover", help="汤姆和杰瑞封面母版，默认取 wechat-tietu-draft/assets/cover_tom_jerry.png（唯一指定版，禁止替换）")
+    common.add_argument("--cover", help="汤姆和杰瑞封面母版，默认取 wechat-tietu-draft/assets/封面.png（唯一指定版，兼容旧名 cover_tom_jerry.png）")
     common.add_argument("--proxy", default=DEFAULT_PROXY,
                         help="TikTok 下载代理，默认 %s（微信 API 会自动直连）" % DEFAULT_PROXY)
 
