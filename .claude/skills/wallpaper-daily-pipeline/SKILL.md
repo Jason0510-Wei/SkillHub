@@ -46,18 +46,22 @@ visibility: "user"
 | 每次投递 | 默认 `--per-day 4`，即 4 组 → 4 条草稿；发表仍人工 |
 | 定时任务 | **当前未启用**（用户明确选择「只跑今天，不建定时任务」）。能力已就绪，随时可启用，见下节 |
 
-### 唯一封面硬约束（2026-11-12 用户二次指定，不可替换）
+### 唯一封面硬约束（2026-11-13 用户最终裁定，不可替换）
 
 所有批次、所有草稿的首图**一律只用** `wechat-tietu-draft/assets/cover_tom_jerry.png`
-（用户提供的图片名「汤姆杰瑞俯瞰蓝天嬉笑.png」，941×1671 RGB PNG，1,938,082 字节）。
+（权威来源 `E:\图片\壁纸\vexaro.4k\20261108_110501_7694083696076295445\cover.png` 的字节级副本，
+941×1671 RGBA PNG，3,667,249 字节）。
 
-- SHA-256：`2c336646e8902e20df0d462ca8c35b49bd8befe5bbf16299011b6fa493c2663f`
-- 视觉特征：**仰视蓝天白云**，左侧汤姆与右侧杰瑞一起低头俯看镜头咧嘴笑；
-  **画面没有树木 / 绿叶、没有爪子特写、没有任何文字或水印**——「有没有树木」是最快的判断标志
+- SHA-256：`ed31ea7dc4ce144999a61e10371a397c4b5079e992a2a116d6c751501b72481a`
+- 视觉特征：仰视蓝天白云，左侧汤姆与右侧杰瑞低头俯看镜头嬉笑；
+  **四角绿叶 + 左下白色前爪 + 白字 `Photo 4k wallpaper iOS 27` / `>>>>>>>` + 右下「AI生成」水印**。
+  **「有没有字母/文字」是最快判断标志 —— 有字才对**
+- 2026-11-13 用户**推翻 11-12 的「无树木、无文字」版**：那张是原版壁纸，不是封面
 - 换机器或更新 skill 后先核对再用：`sha256sum <skills>/wechat-tietu-draft/assets/cover_tom_jerry.png`
-- **禁止**替换为素材目录里的 `cover.*` 或 `_archive/` 下任何旧版；不得裁剪、重新生成
-- 已废弃：`_archive/cover_tom_jerry_v1_1080x1918.jpg`（灰爪）、
-  `_archive/cover_tom_jerry_v2_WITH_LEAVES_WRONG.png`（四角绿叶 + 白字水印）
+- **禁止**替换为任何归档旧版；不得裁剪、重新生成
+- 已废弃：`_archive/cover_tom_jerry_NO_TEXT_2026-11-12_DEPRECATED.png`（无字版）、
+  `_archive/cover_tom_jerry_v1_1080x1918.jpg`（带字但无树木）、
+  `_archive/cover_tom_jerry_v2_compressed_noAI_DEPRECATED.png`（压缩版无水印，非母版）
 - 换已投草稿的首图：用 `tietu_draft.py --update <media_id>` **原地替换第一张**，复用其余旧图，不新建草稿
 
 ## 为什么 batch 不直接调用 `wallpaper-batch-splitter`
