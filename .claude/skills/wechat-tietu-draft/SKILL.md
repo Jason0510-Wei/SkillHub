@@ -43,7 +43,7 @@ visibility: "user"
 
 | 项 | 默认值 |
 |---|---|
-| 首图 / 封面 | `assets/cover_tom_jerry.jpg` —— 「蓝天白云 + 汤姆和杰瑞 + Photo 4k wallpaper iOS 27」固定封面 |
+| 首图 / 封面 | `assets/cover_tom_jerry.png` —— 用户 2026-11-12 **最终指定**的唯一权威封面「汤姆杰瑞俯瞰蓝天嬉笑」（蓝天白云 + 汤姆杰瑞俯看镜头嬉笑，**无树木、无文字**）；指纹与识别特征见下方「封面唯一权威版本」 |
 | 标题 | `【分享】TikTok爆火🔥iOS 4K高清锁屏壁纸📱`（26 字符 / 56 UTF-8 字节，已实测微信接受） |
 | 正文 | `喜欢这组壁纸的话，留个关注❤️`<br>`后续持续更新更多TikTok热门🔥高清壁纸！` |
 | 空行 | 正文与标签之间固定空一行（`\n\n`） |
@@ -51,6 +51,33 @@ visibility: "user"
 
 封面文件独立放在 skill 的 `assets/` 下，**不受素材组重命名影响**；换封面只要替换这个文件，
 或临时用 `--cover <path>` 指定；`--no-cover` 可关闭；环境变量 `WECHAT_TIETU_COVER` 可改默认路径。
+
+### 🔒 封面唯一权威版本（用户 2026-11-12 指定，后面不得再用错）
+
+用户于 2026-11-12 **二次修正**：最终封面是「**没有树木 / 没有文字**」的俯瞰嬉笑版。
+所有草稿、所有批次一律只用这一张，此为硬约束，不是"尽量"：不要从素材目录挑图当封面，
+不要用任何归档旧版，不要重新生成 / 裁剪 / 换风格。
+
+| 项 | 值 |
+|---|---|
+| 文件 | `assets/cover_tom_jerry.png`（用户原图，字节级复制，**未转码、未裁剪**） |
+| 用户提供的图片名 | `汤姆杰瑞俯瞰蓝天嬉笑.png` |
+| 尺寸 / 模式 | **941 × 1671** / RGB / PNG |
+| 文件大小 | **1,938,082 字节**（约 1.85 MiB，< 微信 10 MB 上限，脚本原样上传不转码） |
+| SHA-256 | `2c336646e8902e20df0d462ca8c35b49bd8befe5bbf16299011b6fa493c2663f` |
+| 来源 | 用户 2026-11-12 12:07 重发：`clipboard-2026-11-12T04-07-04-297Z-9719dbf8.png` |
+| 视觉识别特征 | **仰视蓝天白云**；左侧汤姆（灰、黄绿眼、粉耳）与右侧杰瑞（棕、粉耳）一起低头俯看镜头咧嘴笑；**画面里没有树木、没有绿叶、没有爪子特写、没有任何文字/水印**。是否"有树木"是判断用对没用对的最快标志 |
+| 已废弃 · 禁止再用 | `assets/_archive/cover_tom_jerry_v1_1080x1918.jpg`：1080×1918、无绿叶、左下灰爪（首批草稿误用）<br>`assets/_archive/cover_tom_jerry_v2_WITH_LEAVES_WRONG.png`：941×1671、**四角绿叶 + 白色前爪 + 白字 `Photo 4k wallpaper iOS 27` / `>>>>>>>`**（用户明确说"发错图了"，2026-11-12 第一次修正误用） |
+
+校验命令（换机器 / 更新 skill 后必跑）：
+
+```bash
+sha256sum assets/cover_tom_jerry.png
+# 必须等于 2c336646...663f；不一致说明封面被换过，先找用户确认再跑草稿
+```
+
+已投草稿要换首图时，一律用 `--update <media_id>` **原地替换第一张**（复用其余旧图，不新建草稿、不重复上传），
+不要重建整篇、更不要新建第二批草稿。
 
 > ⚠️ 用户标签是**单 `#` 前缀**风格（小红书/微博式），不是微信官方话题的 `#话题名#` 双井号格式。
 > 默认按用户原样输出（微信里表现为纯文本，不生成话题链接）。需要官方话题时显式传
@@ -181,7 +208,7 @@ python "<skill_dir>/scripts/tietu_draft.py" --verify <draft_media_id>
 | `--random-post` | 随机挑一组未投过的 |
 | `--base-dir DIR` / `--author NAME` | 壁纸根目录 / 限定博主 |
 | `--max-images N` | 素材最多取几张（**默认 18，可省略**）；总张数 = 1 封面 + min(素材数,N)，恒 ≤ 19；`0` = 全部但仍受 18 封顶 |
-| `--cover PATH` | 指定首图/封面，默认 `assets/cover_tom_jerry.jpg` |
+| `--cover PATH` | 指定首图/封面，默认 `assets/cover_tom_jerry.png` |
 | `--no-cover` | 本次不加固定封面 |
 | `--cover-insert` | `--update` 时插入封面而非替换第一张 |
 | `--title` / `--content` / `--tags` | 覆盖固定标题 / 正文 / 标签行 |
@@ -212,7 +239,7 @@ python "<skill_dir>/scripts/tietu_draft.py" --verify <draft_media_id>
 | 错误码 | 处理 |
 |---|---|
 | `40164` | 调用 IP 不在白名单。脚本会解析并打印「当前出口 IP = x.x.x.x」，加到「开发密钥 → API IP 白名单」后重跑 `--check-only`（等数分钟生效）。没打印就 `curl ifconfig.me` |
-| `[FAIL] 固定封面文件不存在` | **v1.3.0 硬失败**。把 `assets/cover_tom_jerry.jpg` 一起拷到新机器，或 `--cover <path>`；确实不要封面才用 `--no-cover` |
+| `[FAIL] 固定封面文件不存在` | **v1.3.0 硬失败**。把 `assets/cover_tom_jerry.png` 一起拷到新机器，或 `--cover <path>`；确实不要封面才用 `--no-cover` |
 | `40007` | 用了非永久 MediaID。贴图图片必须走 `material/add_material`，**不能**用 `media/uploadimg` 的 URL |
 | `40125` / `45166` | 图片消息参数 / content 不合法：检查 `article_type=newspic` 与纯文本正文，别混 HTML/JS |
 | `45003` | 标题超长。默认已放宽到 128 字节 / 64 字符；若仍报错就缩短标题 |

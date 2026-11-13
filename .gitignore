@@ -42,3 +42,6 @@ wechat.env
 **/wechat.env
 *.env
 !wechat.env.example
+
+# 已废弃的旧版封面归档不入库（唯一权威封面为 assets/cover_tom_jerry.png）
+.claude/skills/**/assets/_archive/

@@ -35,6 +35,8 @@ IMAGE_EXTS = {
 }
 NUM_RE = re.compile(r"_(\d+)")
 TAIL_NUM_RE = re.compile(r"^(.*?)(\d+)$")
+PAIR_RE = re.compile(r"^(\d+)[_-]([ABab])\.")   # 上游 tiktok skill 的 1_A / 1_B 命名
+LEAD_NUM_RE = re.compile(r"^(\d+)")
 
 
 def die(msg: str) -> None:
@@ -42,9 +44,17 @@ def die(msg: str) -> None:
 
 
 def natural_key(p: Path):
-    """按文件名里的 _NN 数字排序，避免 _10 排到 _2 前面。"""
-    m = NUM_RE.search(p.name)
-    return (0, int(m.group(1)), p.name.lower()) if m else (1, 0, p.name.lower())
+    """数字升序 + A/B 次序。v1.0.1：兼容上游 A/B 成对命名。
+
+    旧版只找 `_NN`，遇到 `1_A.jpg / 1_B.jpg / 2_A.jpg` 全部落到字典序，
+    会把 `10_A` 排到 `2_A` 前面；现在 1_A,1_B,2_A,2_B … 10_A 正确排序，
+    且每 8 张切一组时不会把 A/B 对拆散。
+    """
+    pm = PAIR_RE.match(p.name)
+    if pm:
+        return (0, int(pm.group(1)), pm.group(2).upper(), p.name.lower())
+    m = NUM_RE.search(p.name) or LEAD_NUM_RE.match(p.name)
+    return (0, int(m.group(1)), "", p.name.lower()) if m else (1, 0, "", p.name.lower())
 
 
 def folder_num(name: str):
