@@ -10,7 +10,7 @@ description: >-
   触发词：整合 skill、壁纸流水线、下载博主点赞过万的图、8+1 分组后发公众号、每天发 4 组贴图、
   日更壁纸草稿、wallpaper pipeline。
 agent_created: true
-version: 1.0.1
+version: 1.0.2
 display_name: "壁纸日更流水线"
 display_name_en: "Wallpaper Daily Pipeline"
 description_zh: "串联下载、8+1 分组与公众号贴图草稿的编排层，下载/发帖 skill 保持独立。"
@@ -46,24 +46,23 @@ visibility: "user"
 | 每次投递 | 默认 `--per-day 4`，即 4 组 → 4 条草稿；发表仍人工 |
 | 定时任务 | **当前未启用**（用户明确选择「只跑今天，不建定时任务」）。能力已就绪，随时可启用，见下节 |
 
-### 唯一封面硬约束（2026-11-13 用户最终裁定，不可替换）
+### 唯一封面硬约束（2026-11-16 用户最终裁定，不可替换）
 
 所有批次、所有草稿的首图**一律只用** `wechat-tietu-draft/assets/封面.png`
-（权威来源 `E:\图片\壁纸\vexaro.4k\20261108_110501_7694083696076295445\cover.png` 的字节级副本，
-941×1671 RGBA PNG，3,667,249 字节）。
-**文件名以用户 2026-11-13 22:33 指定的 `封面.png` 为准**，旧名 `cover_tom_jerry.png` 已退役；
+（权威来源 `E:\图片\壁纸\封面.png` 的字节级副本，941×1671 RGB PNG，2,162,755 字节）。
+**文件名以用户指定的 `封面.png` 为准**，旧名 `cover_tom_jerry.png` 已退役；
 脚本与编排层优先读新名、回退旧名，两个名字若同时存在必须字节级一致。
 
-- SHA-256：`ed31ea7dc4ce144999a61e10371a397c4b5079e992a2a116d6c751501b72481a`
+- SHA-256：`e6067f04d727f0ea0920ef3d70e7be1b75f32982b9967678e101c61af4ed7580`
 - 视觉特征：仰视蓝天白云，左侧汤姆与右侧杰瑞低头俯看镜头嬉笑；
-  **四角绿叶 + 左下白色前爪 + 白字 `Photo 4k wallpaper iOS 27` / `>>>>>>>` + 右下「AI生成」水印**。
-  **「有没有字母/文字」是最快判断标志 —— 有字才对**
-- 2026-11-13 用户**推翻 11-12 的「无树木、无文字」版**：那张是原版壁纸，不是封面
+  **四角绿叶 + 左下白色前爪 + 白字 `Photo 4k wallpaper iOS 27` / `>>>>>>>`，但右下角无「AI生成」水印**。
+  **「有字 + 无右下水印」是最快判断标志**
+- 2026-11-16 用户**推翻 11-13 的带「AI生成」水印版**：嫌水印不好看，改用无水印压缩版
 - 换机器或更新 skill 后先核对再用：`sha256sum <skills>/wechat-tietu-draft/assets/封面.png`
 - **禁止**替换为任何归档旧版；不得裁剪、重新生成
-- 已废弃：`_archive/cover_tom_jerry_NO_TEXT_2026-11-12_DEPRECATED.png`（无字版）、
+- 已废弃：`_archive/cover_tom_jerry_WITH_AI_watermark_2026-11-16_DEPRECATED.png`（带水印版）、
+  `_archive/cover_tom_jerry_NO_TEXT_2026-11-12_DEPRECATED.png`（无字版）、
   `_archive/cover_tom_jerry_v1_1080x1918.jpg`（带字但无树木）、
-  `_archive/cover_tom_jerry_v2_compressed_noAI_DEPRECATED.png`（压缩版无水印，非母版）
 - 换已投草稿的首图：用 `tietu_draft.py --update <media_id>` **原地替换第一张**，复用其余旧图，不新建草稿
 
 ## 为什么 batch 不直接调用 `wallpaper-batch-splitter`
@@ -154,7 +153,7 @@ python "<pipe>" all --url "https://www.tiktok.com/@clear__display/photo/77067548
 | `select` | `--from` 榜单 CSV、`--min-likes`、`--photo-only`、`--top`、`--out` |
 | `download` | `--from selected.csv`、`--top` |
 | `batch` | `--source` 博主素材目录 / `--author`、`--batch-name`、`--pairs-per-group`（默认 4 对）、`--order-file` 榜单 CSV（热门优先）、`--allow-partial`、`--reset-batches`、`--dry-run` |
-| `draft` | `--batch-dir`（必填）、`--per-day`（默认 4）、`--pairs-per-group`、`--force`、`--dry-run` |
+| `draft` | `--batch-dir`（必填）、`--per-day`（默认 4）、`--pairs-per-group`、`--force`、`--dry-run`、`--keep-groups`（保留组目录；默认投递成功后自动移入回收站） |
 | 公共 | `--skills-root`、`--wallpaper-dir`、`--batch-root`、`--cover`、`--proxy` |
 
 ## 网络接缝（实机踩坑，已固化进代码）
@@ -175,11 +174,29 @@ python "<pipe>" all --url "https://www.tiktok.com/@clear__display/photo/77067548
   再跑一次 `--check-only` 强制换 token 验 IP 白名单；任一环节失败**不建任何草稿**。
 - 目标组目录已存在、封面 md5 不符、壁纸不足 8 张 → 直接报错退出，不覆盖、不降级。
 
+## 投递后自动清理（用户 2026-11-14 指定）
+
+用户口径：「后续发过草稿的文件夹自动删除」，并选定**只删发布批次的组目录**、
+**投递草稿成功后**执行、**移入回收站可还原**。
+
+- `draft` 在每组草稿建成、写回 `posted.json` 后，把**本次成功投递**的组目录
+  （`发布批次/<批次>/0001/` 这类复制品）移入 Windows 回收站。
+- 实现：`scripts/recycle_bin.py` → `SHFileOperationW + FOF_ALLOWUNDO`，
+  并解析回收站 `$I` 元数据校验「确实进了回收站」，防止变成永久删除。
+- **只删组目录副本**：`壁纸/<博主>/<帖子>/` 源目录**永不自动删**；历史已投组也不回溯清理。
+- `--keep-groups` 保留组目录；`--dry-run` 一律不删。
+- 清理失败只告警，不影响已建成的草稿；报告 JSON 的 `cleaned_groups` 记录本次清理了哪些组。
+- ⚠️ **草稿建成 ≠ 已发表**（脚本不调用发表接口、也感知不到人工发表）。
+  组目录删掉后若想 `--force` 重投，需先从回收站按组号还原目录。
+- 一次性清理的源目录清单与还原方法见
+  `发布批次/20261111-clear__display/_reports/cleanup_源目录_*.md`。
+
 ## 边界（与用户约定一致）
 
 - **不调用** `freepublish/submit`，不用 Cookie / Playwright / 后台逆向接口；草稿箱就是待发队列，人工点发表。
 - 下载与发帖保持两个独立 skill，本 skill 不合并它们的代码。
-- 素材库只读，`batch` 全程 `copy2`；不删、不移、不改原图。
+- 素材库只读，`batch` 全程 `copy2`；不删、不移、不改原图。发布批次里的组目录是复制品，
+  投递成功后可自动清理（见上节），不属于素材库原图。
 - 不自动创建定时任务，除非用户明确要求。
 
 ## 排错
@@ -192,6 +209,7 @@ python "<pipe>" all --url "https://www.tiktok.com/@clear__display/photo/77067548
 | 组数不够 4 组 | 素材不足 4 对 × 4 组；回到 ①~④ 补素材。`--allow-partial` 生成的残组会被 `draft` 的「每组必须 8 张」校验拦下，仅供手工处理，不要直接投 |
 | 首图不是汤姆和杰瑞 | 编排层 md5 校验与下游硬失败都会拦下；先检查 `assets/封面.png` 是否被换过 |
 | 想换分组粒度 | `batch` 与 `draft` 同时给同一个 `--pairs-per-group`（如 8 对 = 16 张，加封面 17 张，仍在 19 张安全上限内） |
+| 想 `--force` 重投已投组，但组目录没了 | 投递成功后组目录默认进回收站；打开回收站按组号（如 `0001`）搜索还原，或以后加 `--keep-groups` 保留 |
 
 ## 给用户的简短说明
 

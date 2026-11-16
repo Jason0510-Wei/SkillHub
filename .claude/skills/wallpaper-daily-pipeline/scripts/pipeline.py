@@ -47,6 +47,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from recycle_bin import send_to_recycle_bin
+except ImportError:                      # 旧 clone 没同步该模块时只跳过清理，不影响建草稿
+    send_to_recycle_bin = None
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
@@ -264,6 +269,33 @@ def validate_group(g: Path, master_md5: str, expected_walls: int):
     return covers[0], len(walls)
 
 
+def cleanup_posted_groups(batch, group_names, keep_groups=False):
+    """投递成功后把发布组目录移入回收站（可还原），返回成功清理的组名列表。
+
+    只处理本次成功建草稿的组；历史已投组、源帖子目录一律不动。
+    单个组清理失败只告警，不影响已建成的草稿与其余组。
+    """
+    if keep_groups or not group_names:
+        return []
+    if send_to_recycle_bin is None:
+        log("  [WARN] 找不到 recycle_bin.py，跳过自动清理（草稿不受影响）")
+        return []
+    cleaned = []
+    batch = Path(batch).resolve()
+    for name in group_names:
+        g = (batch / str(name)).resolve()
+        if os.path.commonpath([str(batch), str(g)]) != str(batch):
+            log("  [WARN] 组 %s 路径越出批次目录，跳过清理" % name)
+            continue
+        ok, msg = send_to_recycle_bin(str(g))
+        log("  %s  %s" % (name, msg))
+        if ok:
+            cleaned.append(name)
+        else:
+            log("  [WARN] 组 %s 清理失败，目录保留；草稿不受影响" % name)
+    return cleaned
+
+
 def cmd_draft(args):
     batch = Path(args.batch_dir).expanduser().resolve()
     if not batch.is_dir():
@@ -355,6 +387,14 @@ def cmd_draft(args):
         results.append({"group": g.name,
                         "draft_media_id": record.get("draft_media_id", ""),
                         "image_count": record.get("image_count", 0)})
+
+    # 投递成功后自动清理：只删本次成功组的「复制品」组目录，移入回收站可还原。
+    # dry-run 不会走到这里；--keep-groups 可保留；源帖子目录永不自动删。
+    cleaned = []
+    if not args.dry_run and not getattr(args, "keep_groups", False):
+        log("\n=== 投递后自动清理（组目录 → 回收站）===")
+        cleaned = cleanup_posted_groups(batch, [x["group"] for x in results])
+        log("  已清理 %d/%d 个组目录（源图与壁纸目录不受影响）" % (len(cleaned), len(results)))
     report = {
         "batch": batch.name,
         "time": datetime.now().isoformat(timespec="seconds"),
@@ -362,6 +402,8 @@ def cmd_draft(args):
         "cover": str(master),
         "cover_md5": master_md5,
         "drafts": results,
+        "cleaned_groups": cleaned,
+        "cleanup_note": "投递成功的组目录已移入回收站（可还原）；--keep-groups 可保留；源帖子目录不自动删",
         "note": "只到草稿箱，发表由人工在公众号后台/订阅号助手点；本流水线不调用 freepublish/submit",
     }
     report_path = report_dir / ("drafts_%s.json" % datetime.now().strftime("%Y%m%d_%H%M%S"))
@@ -371,6 +413,8 @@ def cmd_draft(args):
     for x in results:
         log("  %s  media_id=%s  %d 张" % (x["group"], x["draft_media_id"], x["image_count"]))
     log("  汇总：%s" % report_path)
+    if cleaned:
+        log("  自动清理：%d 个组目录已移入回收站（可在回收站按组号还原）" % len(cleaned))
     log("  下一步：去公众号后台 → 草稿箱（或订阅号助手 → 贴图）手动点发表。")
     return report_path
 
@@ -454,6 +498,8 @@ def build_parser():
                    help="每组几对 A/B，用于校验 8+1")
     t.add_argument("--force", action="store_true", help="忽略已投记录强制重投")
     t.add_argument("--dry-run", action="store_true", help="只预检，不建草稿")
+    t.add_argument("--keep-groups", action="store_true",
+                   help="投递成功后保留发布组目录（默认自动移入回收站，可按组号还原）")
     t.set_defaults(func=cmd_draft)
 
     allp = sub.add_parser("all", parents=[common], help="一键串起 analyze→select→download→batch→draft")
